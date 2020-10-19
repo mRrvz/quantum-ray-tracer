@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c0d60b10b8b4d30cfe916910b4475b54d70451c830d78f6f3d3ef979b9ff4942
+-- hash: 3604cfcb370e6e05d552dced4036390cf78ac04eb63987c4b22f670d0b1a57af
 
 name:           quantum-ray-tracer
 version:        0.1.0.0
@@ -28,7 +28,6 @@ source-repository head
 library
   exposed-modules:
       Lib
-      Main
   other-modules:
       Paths_quantum_ray_tracer
   hs-source-dirs:
