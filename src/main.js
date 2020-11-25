@@ -1,4 +1,4 @@
-require('./src/qcengine_node.js');
+require('./node_qc/qcengine_node.js');
 
 qc = new QPU();
 
@@ -89,51 +89,9 @@ function do_brute_force_traces()
     }
 }
 
-function tiny_trace(x, objects)
-{
-    console.log(x.phaseShift);
-    qc.codeLabel('tiny-trace');
-    for (var i = 0; i < objects.length; ++i)
-    {
-        x.not(~objects[i]);
-        x.phaseShift(180);
-        x.not(~objects[i]);
-    }
-}
 
-function groverIteration(x)
-{
-    qc.codeLabel('Grover iteration');
-    x.hadamard();
-    x.not();
-    x.phaseShift(180);
-    x.not();
-    x.hadamard();
-}
-
-//allocate_all();
-//init_scene()
-//ray.x.write(0);
-//ray.x.hadamard();
-//ray.color.write(background_color);
-//ray_trace();
-//tiny_trace(ray.x, scene.objects);
-//console.log(ray.x.read());
-//console.log(ray.color.read());
-
-
-var x_bits = 3;   
-var p_bits = 3;  
-qc.reset(x_bits + p_bits);
-var ray_x = qc.new_qint(x_bits, 'ray_x');
-var counter = qc.new_qint(x_bits, 'counter');
-var object_positions = [3, 5];
-qc.write(0);
-ray_x.hadamard();
-tiny_trace(ray_x, object_positions);
-
-//do_brute_force_traces();
-//init_scene();
+allocate_all();
+do_brute_force_traces();
 //ray.x.write(1);
 //ray.color.write(background_color);
 //ray_trace();
