@@ -36,6 +36,7 @@
 //
 
 
+
 function getLowestBitIndex(bf)
 {
   validate_bitfield(bf);
@@ -266,7 +267,8 @@ bitfield_zero      = 0;
 
 function setup_bitfields(max_qubits)
 {
-  const max_integer_bits = 31;
+  //const max_integer_bits = 31;
+  const max_integer_bits = 53; // ?
 
   if (max_qubits > max_integer_bits)
   {

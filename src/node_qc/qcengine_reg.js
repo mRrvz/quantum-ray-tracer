@@ -35,6 +35,8 @@
 //  For more info, please contact me at qcengine@machinelevel.com
 //
 
+const number_is_nan = require("number-is-nan");
+
 
 ///////////////////////////////////////////////////////////////
 // Major tasks in process: (all are started, none are finished)
@@ -267,6 +269,7 @@ function QNullBlock(numQubits, qReg)
 {
     this.qReg = qReg;
     this.numQubits = numQubits; // effective number of qubits if this were standalone
+    console.log(numQubits, 'superdick');
     this.bitValue = 1 << (numQubits - 1);   // value of the bit this node represents
     this.kidMask = this.bitValue - 1;       // Mask conditions etc when passing downstream
 
@@ -361,6 +364,7 @@ function human_data_size(bytes)
 
 function QReg(numQubits, numBlockQubits, doublePrecision)
 {
+    console.log('super dick 228', numQubits);
     // Note: it's valid for numQubits to be smaller than numBlockQubits,
     // to allow for future expansion.
 
@@ -392,6 +396,7 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
 
       this.deactivate();
 
+      console.log(numQubits, 'ayo');
 	    this.numQubits = numQubits;    // total number of qubits
       this.numValues = 1 << this.numQubits;
       this.allBitsMask = (bitfield_one << to_bitfield(this.numQubits)) - bitfield_one;
@@ -454,9 +459,15 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
 	    {
             var maxBitsToSimulate = 28; // 30 qubits needs 8GB of RAM, and a lot of time to simulate.
             if (qc_options && qc_options.max_state_vector_sim_qubits)
-              maxBitsToSimulate = qc_options.max_state_vector_sim_qubits;
+            {
+                maxBitsToSimulate = qc_options.max_state_vector_sim_qubits;
+            }
+
+            console.log(this.numQubits);
+            console.log(maxBitsToSimulate);
             if (this.numQubits > maxBitsToSimulate)
             {
+              console.log(228);
               {
                 this.disableSimulation = true;
                 console.log('This QC has ' + this.numQubits + ' qubits, ' +

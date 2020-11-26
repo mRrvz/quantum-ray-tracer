@@ -358,9 +358,16 @@ function QScriptInterface(qReg)
         this.use_mixed_state = this.anim_use_mixed_state;
 
         this.setupAliases();
-	}
+    }
+    
+    this.cphase = function(theta, cond)
+    {
+        if (cond == null)
+            cond = ~0;
+        this.phase(theta, 0, cond);
+    }
 
-	// Speed up computation ( a lot) by disabling animations
+    // Speed up computation ( a lot) by disabling animations
 	this.disableAnimation = function ()
 	{
 		this.qReg.animateWidgets = false;
