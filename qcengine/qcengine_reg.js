@@ -35,8 +35,6 @@
 //  For more info, please contact me at qcengine@machinelevel.com
 //
 
-const number_is_nan = require("number-is-nan");
-
 
 ///////////////////////////////////////////////////////////////
 // Major tasks in process: (all are started, none are finished)
@@ -96,7 +94,6 @@ function QBlock(numQubits, qReg)
     this.kidMask = this.bitValue - 1;       // Mask conditions etc when passing downstream
     this.values = null;
     this.allZero = false; // All values are known to be zero
-    this.most_recent_ppm_result = 0;
 
     if (!qReg.noCPUBlocks)
     {
@@ -269,43 +266,41 @@ function QNullBlock(numQubits, qReg)
 {
     this.qReg = qReg;
     this.numQubits = numQubits; // effective number of qubits if this were standalone
-    console.log(numQubits, 'superdick');
     this.bitValue = 1 << (numQubits - 1);   // value of the bit this node represents
     this.kidMask = this.bitValue - 1;       // Mask conditions etc when passing downstream
 
-    this.values = bitfield_zero;
+    this.values = new BitField(0, this.numQubits);
 
     ////////////////////////////
     // methods
   this.setZero = function ()
   {
-    this.values = bitfield_zero;
+    this.values.set(0);
   }
   this.scaleValues = function (scale) {}
   this.initialize = function (value)
   {
-    this.values = to_bitfield(value);
+    this.values.set(value);
   }
 
   this.read = function (targetQubits)
   {
-    targetQubits = to_bitfield(targetQubits);
-    return this.values & targetQubits;
+    var result = new BitField(this.values);
+    result.andEquals(targetQubits);
+    return result;
   }
+
 
   this.destruct = function () {}
 
   this.not = function (targetQubit)
   {
-    targetQubit = to_bitfield(targetQubit);
-    this.values ^= targetQubit;
+    this.values.xorEquals(targetQubit);
   }
 
   this.cnot = function (targetQubit, conditionQubits, pairBranch)
   {
-    targetQubit = to_bitfield(targetQubit);
-    conditionQubits = to_bitfield(conditionQubits);
-    if ((this.values & conditionQubits) == conditionQubits)
+    if (this.values.testBits(conditionQubits))
       this.not(targetQubit);
   }
 
@@ -313,9 +308,7 @@ function QNullBlock(numQubits, qReg)
   this.op2x2 = function (targetQubit, opFunc, opData, pairBranch) {}
   this.cop2x2 = function (targetQubit, conditionQubits, opFunc, opData, pairBranch)
   {
-    targetQubit = to_bitfield(targetQubit);
-    conditionQubits = to_bitfield(conditionQubits);
-    if ((this.values & conditionQubits) == conditionQubits)
+    if (this.values.testBits(conditionQubits))
       this.op2x2(targetQubit, opFunc, opData, pairBranch);
   }
 
@@ -323,27 +316,24 @@ function QNullBlock(numQubits, qReg)
   this.totalLengthSquared = function () {return 1;}
   this.peekQubitProbability = function (targetQubit)
   {
-    targetQubit = to_bitfield(targetQubit);
-    if ((this.values & targetQubit) == targetQubit)
+    if (this.values.testBits(targetQubit))
       return 1;
     return 0;
   }
 
   this.peekComplexValue = function (targetValue)
   {
-    targetValue = to_bitfield(targetValue);
-    if (this.values == targetValue)
+    if (this.values.isEqualTo(targetValue))
       return new Vec2(1, 0);
     return new Vec2(0, 0);
   }
 
   this.pokeComplexValue = function (targetValue, x, y)
   {
-    targetValue = to_bitfield(targetValue);
     var threshold = 0.5 * 0.5;
     var prob = x * x + y * y;
     if (prob >= threshold)
-      this.values = targetValue;
+      this.values.set(targetValue);
   }
 }
 
@@ -364,7 +354,6 @@ function human_data_size(bytes)
 
 function QReg(numQubits, numBlockQubits, doublePrecision)
 {
-    console.log('super dick 228', numQubits);
     // Note: it's valid for numQubits to be smaller than numBlockQubits,
     // to allow for future expansion.
 
@@ -385,10 +374,6 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
 
     this.setSize = function(numQubits, numBlockQubits, doublePrecision)
     {
-      setup_bitfields(numQubits);
-      this.classicalBits = bitfield_zero;
-      this.classicalBitsValid = bitfield_zero;
-
       if (numBlockQubits == null)
         numBlockQubits = numQubits;
      if (doublePrecision == null)
@@ -396,10 +381,11 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
 
       this.deactivate();
 
-      console.log(numQubits, 'ayo');
 	    this.numQubits = numQubits;    // total number of qubits
       this.numValues = 1 << this.numQubits;
-      this.allBitsMask = (bitfield_one << to_bitfield(this.numQubits)) - bitfield_one;
+      this.allBitsMask = new BitField(0, this.numQubits);
+      for (var i = 0; i < this.numQubits; ++i)
+        this.allBitsMask.setBit(i, 1);
 
 	    this.numBlockQubits = numBlockQubits;    // number of qubits per data block
       this.numBlockValues = 1 << this.numBlockQubits;
@@ -430,7 +416,7 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
       this.mixed_states = null;
       this.current_mix = null;
       this.did_use_photonic_sim = false;
-      this.noise_mask = bitfield_zero;
+      this.noise_mask = new BitField(0, this.numQubits);
       this.noise_level = new Array(this.numQubits);
 
       if (this.core_sim)
@@ -459,15 +445,9 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
 	    {
             var maxBitsToSimulate = 28; // 30 qubits needs 8GB of RAM, and a lot of time to simulate.
             if (qc_options && qc_options.max_state_vector_sim_qubits)
-            {
-                maxBitsToSimulate = qc_options.max_state_vector_sim_qubits;
-            }
-
-            console.log(this.numQubits);
-            console.log(maxBitsToSimulate);
+              maxBitsToSimulate = qc_options.max_state_vector_sim_qubits;
             if (this.numQubits > maxBitsToSimulate)
             {
-              console.log(228);
               {
                 this.disableSimulation = true;
                 console.log('This QC has ' + this.numQubits + ' qubits, ' +
@@ -844,21 +824,22 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
    	{
         if (mask == null)
             mask = this.allBitsMask;
+        mask = bitFieldToInt(mask); // TODO: implement bitfields below
         // If there are condition bits, and all of them are classically valid,
         // then we don't need to invalidate.
         if (condition)
         {
-            var cond = to_bitfield(condition);
+            var cond = bitFieldToInt(condition);
             if ((cond & this.classicalBitsValid) == cond)
                 return;
         }
-        this.classicalBitsValid &= ~to_bitfield(mask);
+        this.classicalBitsValid &= ~mask;
    	}
 
     this.debugCheckClassicalBitsValidity = function(reportSuccessAlso)
     {
-        var mask = to_bitfield(this.allBitsMask);
-        var bit = bitfield_one;
+        var mask = bitFieldToInt(this.allBitsMask);
+        var bit = 1;
         var badBits = 0;
         while (bit & mask)
         {
@@ -897,8 +878,8 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
     // This gets called whenever bits collapse to a known state
    	this.setClassicalBits = function(mask, values)
    	{
-        mask = to_bitfield(mask);
-        values = to_bitfield(values);
+        mask = bitFieldToInt(mask); // TODO: implement bitfields below
+        values = bitFieldToInt(values); // TODO: implement bitfields below
         this.classicalBitsValid |= mask;
         this.classicalBits &= ~mask;
         this.classicalBits |= values & mask;
@@ -935,8 +916,8 @@ function QReg(numQubits, numBlockQubits, doublePrecision)
     // classicalBits are used for testing and fast easy reading.
     // When they're valid, reading them is as good as reading the QReg,
     // and a lot faster.
-    this.classicalBits = bitfield_zero;
-    this.classicalBitsValid = bitfield_zero;
+    this.classicalBits = 0;
+    this.classicalBitsValid = 0;
 
     // The instruction we're currently processing
     this.currentInstruction = null;

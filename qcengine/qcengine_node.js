@@ -54,11 +54,11 @@ QPU = require('./qcengine_scriptpanel.js').QPU;
 qintMask = require('./qcengine_int.js').qintMask;
 require('./qcengine_basicops.js')
 
-create_svg_string = require('./qcengine_svg.js').create_svg_string;
+//create_svg_string = require('./qcengine_svg.js').create_svg_string;
 
-export_to_qasm = require('./qcengine_export.js').export_to_qasm;
-export_to_javascript = require('./qcengine_export.js').export_to_javascript;
+//export_to_qasm = require('./qcengine_export.js').export_to_qasm;
+//export_to_javascript = require('./qcengine_export.js').export_to_javascript;
 
-translate_stream_to_staff = require('./qcengine_stream.js').translate_stream_to_staff;
-translate_staff_to_stream = require('./qcengine_stream.js').translate_staff_to_stream;
+//translate_stream_to_staff = require('./qcengine_stream.js').translate_stream_to_staff;
+//translate_staff_to_stream = require('./qcengine_stream.js').translate_staff_to_stream;
 

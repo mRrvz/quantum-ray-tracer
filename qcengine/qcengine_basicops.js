@@ -39,7 +39,6 @@
 // NOT
 QReg.prototype.not = function (targetQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -55,7 +54,7 @@ QReg.prototype.not = function (targetQubits)
     // TODO: Try speed with float view vs. int view into the data.
     if (targetQubits == null)	// this allows a missing arg to just affect the whole reg
         targetQubits = this.allBitsMask;
-    if (!targetQubits)
+    if (isAllZero(targetQubits))
         return;
 
     if (this.disableSimulation)
@@ -64,6 +63,10 @@ QReg.prototype.not = function (targetQubits)
         this.changed();
         return;
     }
+
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
 
     if (printSpeedMetrics)
     {
@@ -82,7 +85,7 @@ QReg.prototype.not = function (targetQubits)
         console.log('NOT op time: ' + (elapsedTimeMS / 1000.0) + ' seconds.\n');
     }
     // No need to change the observation mask, but the values changed.
-    this.classicalBits ^= to_bitfield(targetQubits);
+    this.classicalBits ^= targetQubits;
     this.changed();
 }
 
@@ -189,14 +192,52 @@ QBlock.prototype.not = function (targetQubit)
     if (this.gpuBlock && webgl_blocks.side_by_side_checking)
         this.gpuBlock.side_by_side_check('NOT bit'+targetQubit, this.values);
 }
+/*
+function BlockAsmModule(stdlib, foreign, heap)
+{
+   "use asm";
 
+//    var sqrt = stdlib.Math.sqrt;
 
+    function not(targetQubit, startIndex, numIndices)
+    {
+        // this is a within-block operation
+        var temp;
+        var index1;
+        var index2;
+        var column1 = startIndex;
+        var column2 = column1 + targetQubit;
+        var endIndex = startIndex + numIndices;
+        while (column1 < endIndex)
+        {
+            for (var j = 0; j < targetQubit; ++j)
+            {
+                index1 = column1 * 2;
+                index2 = column2 * 2;
+
+                temp = heap[index1];
+                heap[index1] = heap[index2];
+                heap[index2] = temp;
+                temp = heap[index1 + 1];
+                heap[index1 + 1] = heap[index2 + 1];
+                heap[index2 + 1] = temp;
+                      
+                column1++;
+                column2++;
+//tcount++;
+            }
+            // Now skip the other half of our pairs
+            column1 += targetQubit;
+            column2 += targetQubit;
+        }
+    }
+    return { not: not };
+}
+*/
 /////////////////////////////////////////////////////////////////
 // Exchange (implemented using cnot)
 QReg.prototype.exchange = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -225,10 +266,15 @@ QReg.prototype.exchange = function (targetQubits, conditionQubits)
 
     // Exactly two targetBits are set. Find them and proceed with 3 cnots.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     this.cnot(target1, cond1);
     this.cnot(target2, cond2);
@@ -239,8 +285,6 @@ QReg.prototype.exchange = function (targetQubits, conditionQubits)
 // Exchange (implemented using cnot)
 QReg.prototype.rootexchange = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -256,10 +300,15 @@ QReg.prototype.rootexchange = function (targetQubits, conditionQubits)
     this.invalidateClassicalBits(targetQubits, conditionQubits);
     // Exactly two targetBits are set. Find them and proceed with 3 cnots.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     this.cnot(target1, cond1);
     this.crootnot(target2, cond2);
@@ -268,8 +317,6 @@ QReg.prototype.rootexchange = function (targetQubits, conditionQubits)
 
 QReg.prototype.rootexchange_inv = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -285,10 +332,15 @@ QReg.prototype.rootexchange_inv = function (targetQubits, conditionQubits)
     this.invalidateClassicalBits(targetQubits, conditionQubits);
     // Exactly two targetBits are set. Find them and proceed with 3 cnots.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     this.cnot(target1, cond1);
     this.crootnot_inv(target2, cond2);
@@ -299,8 +351,6 @@ QReg.prototype.rootexchange_inv = function (targetQubits, conditionQubits)
 // CNOT
 QReg.prototype.cnot = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -314,9 +364,9 @@ QReg.prototype.cnot = function (targetQubits, conditionQubits)
         return;
     }
     // TODO: Try speed with float view vs. int view into the data.
-    if (!targetQubits)
+    if (isAllZero(targetQubits))
         return;
-    if (!conditionQubits)
+    if (isAllZero(conditionQubits))
     {
         this.not(targetQubits);
         return;
@@ -345,12 +395,16 @@ QReg.prototype.cnot = function (targetQubits, conditionQubits)
         this.changed();
         return;
     }
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
+    conditionQubits = bitFieldToInt(conditionQubits);
 
     // If we've mixed with any quantum-funky bits, then all of these are quantum-funky
-    if ((conditionQubits & to_bitfield(this.classicalBitsValid)) != conditionQubits)
+    if ((conditionQubits & this.classicalBitsValid) != conditionQubits)
         this.invalidateClassicalBits(targetQubits);
-    else if ((to_bitfield(this.classicalBits) & conditionQubits) == conditionQubits)
-        this.classicalBits ^= to_bitfield(targetQubits);
+    else if ((this.classicalBits & conditionQubits) == conditionQubits)
+        this.classicalBits ^= targetQubits;
 
     for (var i = 0; i < this.numQubits; ++i)
     {
@@ -488,7 +542,6 @@ QBlock.prototype.cnot = function (targetQubit, conditionQubits, pairBlock)
 
 QReg.prototype.apply_noise = function (noiseMagnitude, targetQubits, noiseFunc)
 {
-    targetQubits = to_bitfield(targetQubits);
     this.noise_level = 0;
     var noise_count = 0;
     var save_noise_prob = qc_options.noise_probability;
@@ -499,17 +552,18 @@ QReg.prototype.apply_noise = function (noiseMagnitude, targetQubits, noiseFunc)
     }
     else
     {
-        var bf = 0;
+        var bf = NewBitField(0, this.numQubits);
         if (Math.random() < save_noise_prob)
         {
             var max_noise = 0;
-            var low = getLowestBitIndex(targetQubits);
-            var high = getHighestBitIndex(targetQubits);
+            var low = targetQubits.getLowestBitIndex();
+            var high = targetQubits.getHighestBitIndex();
 
-            bf = 1 << low;
+            bf.set(0);
+            bf.setBit(low, 1);
             for (var bit = low; bit <= high; ++bit)
             {
-                if (bf & targetQubits)
+                if (bf.andIsNotEqualZero(targetQubits))
                 {
                     var phaseMag = noiseMagnitude * (2 * Math.random() - 1);
                     max_noise = Math.max(max_noise, Math.abs(phaseMag));
@@ -519,12 +573,13 @@ QReg.prototype.apply_noise = function (noiseMagnitude, targetQubits, noiseFunc)
                     max_noise = Math.max(max_noise, Math.abs(xmag));
                     this.rotatex(bf, 180 * xmag);
                 }
-                bf <<= bitfield_one;
+                bf.shiftLeft1();
             }
 //            this.phaseShift(targetQubits, 180 * mag1);
             this.noise_level += max_noise;
             noise_count += 2;
         }
+        bf.recycle();
     }
     if (noise_count)
         this.noise_level /= noise_count;
@@ -534,7 +589,6 @@ QReg.prototype.apply_noise = function (noiseMagnitude, targetQubits, noiseFunc)
 
 QReg.prototype.noise = function (noiseMagnitude, targetQubits, noiseFunc)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -560,14 +614,11 @@ QReg.prototype.noise = function (noiseMagnitude, targetQubits, noiseFunc)
 
 QReg.prototype.single_qubit_phase = function (targetQubits, phiDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     this._phaseShift(targetQubits, 0, phiDegrees);
 }
 
 QReg.prototype.multi_qubit_phase = function (targetQubits, conditionQubits, phiDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     this._phaseShift(targetQubits, conditionQubits, phiDegrees);
 }
 
@@ -582,8 +633,6 @@ QReg.prototype.multi_qubit_phase = function (targetQubits, conditionQubits, phiD
 
 QReg.prototype._phaseShift = function (targetQubits, conditionQubits, phiDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -604,14 +653,19 @@ QReg.prototype._phaseShift = function (targetQubits, conditionQubits, phiDegrees
         conditionQubits = 0;
     if (targetQubits == null)
         targetQubits = 0;
-    var zerot = !targetQubits;
-    var zeroc = !conditionQubits;
+    var zerot = isAllZero(targetQubits);
+    var zeroc = isAllZero(conditionQubits);
 
     if (zerot && zeroc)
     {
         // t=0 c=0: single-qubit phase on all qubits
         targetQubits = this.allBitsMask;
     }
+
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    conditionQubits = bitFieldToInt(conditionQubits);
+    targetQubits = bitFieldToInt(targetQubits);
 
     // In the case where we have MULTIPLE target qubits, separate them and
     // run them separately.
@@ -624,7 +678,7 @@ QReg.prototype._phaseShift = function (targetQubits, conditionQubits, phiDegrees
         // run them separately.
         for (var bit = targ_lo; bit <= targ_hi; ++bit)
         {
-            var targ_mask = bitfield_one << to_bitfield(bit);
+            var targ_mask = 1 << bit;
             if (targetQubits & targ_mask)
                 this._phaseShift(targ_mask, conditionQubits & ~targ_mask, phiDegrees);
         }
@@ -670,8 +724,11 @@ QReg.prototype._phaseShift = function (targetQubits, conditionQubits, phiDegrees
         this.changed();
         return;
     }
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    conditionQubits = bitFieldToInt(conditionQubits);
     // Clear out any high bits
-    conditionQubits &= (1 << this.numQubits) - 1;
+    conditionQubits &= ~(~0 << this.numQubits);
 
     if (this.use_photon_sim)
     {
@@ -731,8 +788,8 @@ QBlock.prototype._phaseShift = function (conditionQubits, sval, cval)
             index = column * 2;
             ax = this.values[index];
             ay = this.values[index + 1];
-            this.values[index]     = (cval * ax) - (sval * ay);
-            this.values[index + 1] = (sval * ax) + (cval * ay);
+            this.values[index]     = (cval * ax) + (sval * ay);
+            this.values[index + 1] = (cval * ay) - (sval * ax);
         }
     }
     else
@@ -747,8 +804,8 @@ QBlock.prototype._phaseShift = function (conditionQubits, sval, cval)
 
                 ax = this.values[index];
                 ay = this.values[index + 1];
-                this.values[index]     = (cval * ax) - (sval * ay);
-                this.values[index + 1] = (sval * ax) + (cval * ay);
+                this.values[index]     = (cval * ax) + (sval * ay);
+                this.values[index + 1] = (cval * ay) - (sval * ax);
             }
         }
     }
@@ -762,7 +819,6 @@ QBlock.prototype._phaseShift = function (conditionQubits, sval, cval)
 // opData can be anything; it will be passed to opFunc during block operations
 QReg.prototype.op2x2 = function (targetQubits, opFunc, opData, mtx2x2)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -776,7 +832,7 @@ QReg.prototype.op2x2 = function (targetQubits, opFunc, opData, mtx2x2)
         return;
     }
     this.invalidateClassicalBits(targetQubits);
-    if (!targetQubits)
+    if (isAllZero(targetQubits))
         return;
 
     if (this.disableSimulation)
@@ -785,6 +841,9 @@ QReg.prototype.op2x2 = function (targetQubits, opFunc, opData, mtx2x2)
         this.changed();
         return;
     }
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
 
     // Any bits touched by this are probably quantum-funky now
     this.invalidateClassicalBits(targetQubits);
@@ -885,8 +944,6 @@ QBlock.prototype.op2x2 = function (targetQubit, opFunc, opData, mtx2x2, pairBloc
 
 QReg.prototype.cop2x2 = function (targetQubits, conditionQubits, opFunc, opData, mtx2x2)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -900,9 +957,9 @@ QReg.prototype.cop2x2 = function (targetQubits, conditionQubits, opFunc, opData,
         return;
     }
     this.invalidateClassicalBits(targetQubits, conditionQubits);
-    if (!targetQubits)
+    if (isAllZero(targetQubits))
         return;
-    if (!conditionQubits)
+    if (isAllZero(conditionQubits))
     {
         this.op2x2(targetQubits, opFunc, opData, mtx2x2);
         return;
@@ -914,6 +971,10 @@ QReg.prototype.cop2x2 = function (targetQubits, conditionQubits, opFunc, opData,
         this.changed();
         return;
     }
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
+    conditionQubits = bitFieldToInt(conditionQubits);
 
     // Any bits touched by this are probably quantum-funky now
     this.invalidateClassicalBits(targetQubits);
@@ -1034,7 +1095,6 @@ function blockOp_Hadamard(array1, index1, array2, index2, opData)
 
 QReg.prototype.hadamard = function (targetQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1093,8 +1153,6 @@ QReg.prototype.hadamard = function (targetQubits)
 
 QReg.prototype.chadamard = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1108,7 +1166,7 @@ QReg.prototype.chadamard = function (targetQubits, conditionQubits)
         return;
     }
 
-    if (this.use_photon_sim && !conditionQubits)
+    if (this.use_photon_sim && isAllZero(conditionQubits))
     {
         var low_targ = targetQubits.getLowestBitIndex();
         var high_targ = targetQubits.getHighestBitIndex();
@@ -1129,7 +1187,7 @@ QReg.prototype.chadamard = function (targetQubits, conditionQubits)
     {
         if (targetQubits == null)   // this allows a missing arg to just affect the whole reg
             targetQubits = this.allBitsMask;
-        if (!conditionQubits)
+        if (isAllZero(conditionQubits))
         {
             var low_targ = targetQubits.getLowestBitIndex();
             var high_targ = targetQubits.getHighestBitIndex();
@@ -1156,7 +1214,6 @@ QReg.prototype.chadamard = function (targetQubits, conditionQubits)
 // http://jsilverst.webspace.virginmedia.com/Data/Thesis.pdf (1.10) on page 11
 QReg.prototype.optical_phase = function (targetQubits, phiDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1186,7 +1243,6 @@ QReg.prototype.optical_phase = function (targetQubits, phiDegrees)
 // http://jsilverst.webspace.virginmedia.com/Data/Thesis.pdf (1.10) on page 11
 QReg.prototype.optical_beamsplitter = function (targetQubits, reflectivity)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1221,8 +1277,6 @@ QReg.prototype.optical_beamsplitter = function (targetQubits, reflectivity)
 
 QReg.prototype.coptical_beamsplitter = function (targetQubits, conditionQubits, reflectivity)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1257,8 +1311,6 @@ QReg.prototype.coptical_beamsplitter = function (targetQubits, conditionQubits, 
 
 QReg.prototype.dual_rail_beamsplitter = function (targetQubits, conditionQubits, reflectivity, auxQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1297,10 +1349,15 @@ QReg.prototype.dual_rail_beamsplitter = function (targetQubits, conditionQubits,
 
     // Exactly two targetBits are set. Find them and proceed with 3 ops.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     this.cnot(target1, cond1);
     this.coptical_beamsplitter(target2, cond2, reflectivity);
@@ -1309,8 +1366,6 @@ QReg.prototype.dual_rail_beamsplitter = function (targetQubits, conditionQubits,
 
 QReg.prototype.pbs = function (targetQubits, conditionQubits, horiz_vert, auxQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // If we use this, we're committed to linear optics.
     // Can't do this one in qubit space.
     var default_modes_per_qubit = 2;
@@ -1354,10 +1409,15 @@ QReg.prototype.pbs = function (targetQubits, conditionQubits, horiz_vert, auxQub
 
     // Exactly two targetBits are set. Find them and proceed with 3 ops.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     this.cnot(target1, cond1);
     this.coptical_beamsplitter(target2, cond2, reflectivity);
@@ -1366,8 +1426,6 @@ QReg.prototype.pbs = function (targetQubits, conditionQubits, horiz_vert, auxQub
 
 QReg.prototype.pair_source = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1410,8 +1468,6 @@ QReg.prototype.pair_source = function (targetQubits, conditionQubits)
 
 QReg.prototype.polarization_grating_in = function (targetQubits, conditionQubits, theta)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1439,10 +1495,15 @@ QReg.prototype.polarization_grating_in = function (targetQubits, conditionQubits
 
     // Exactly two targetBits are set. Find them and proceed with 3 ops.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     if (theta < 0)
     {
@@ -1459,8 +1520,6 @@ QReg.prototype.polarization_grating_in = function (targetQubits, conditionQubits
 
 QReg.prototype.polarization_grating_out = function (targetQubits, conditionQubits, theta)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1488,10 +1547,15 @@ QReg.prototype.polarization_grating_out = function (targetQubits, conditionQubit
 
     // Exactly two targetBits are set. Find them and proceed with 3 ops.
     var targetArray = makeBitArray(targetQubits, 2);
-    var target1 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[0]));
-    var target2 = targetQubits & ~(bitfield_one << to_bitfield(targetArray[1]));
-    var cond1 = target2 | conditionQubits;
-    var cond2 = target1 | conditionQubits;
+
+    var target1 = new BitField(targetQubits);
+    var target2 = new BitField(targetQubits);
+    target1.setBit(targetArray[0], 0);
+    target2.setBit(targetArray[1], 0);
+    var cond1 = new BitField(target2);
+    var cond2 = new BitField(target1);
+    cond1.orEquals(conditionQubits);
+    cond2.orEquals(conditionQubits);
 
     if (theta < 0)
     {
@@ -1528,10 +1592,36 @@ function blockOp_2x2(array1, index1, array2, index2, opData)
 //////////////////////////////////////////////////////////////
 // Rotate and cRotate
 //
+function blockOp_Rotatey(array1, index1, array2, index2, opData)
+{
+    var sval = opData[0];
+    var cval = opData[1];
+    var ar = array1[index1];
+    var ai = array1[index1 + 1];
+    var br = array2[index2];
+    var bi = array2[index2 + 1];
+    array1[index1]     = (cval * ar) + (sval * bi);
+    array1[index1 + 1] = (cval * ai) - (sval * br);
+    array2[index2]     = (cval * br) + (sval * ai);
+    array2[index2 + 1] = (cval * bi) - (sval * ar);
+}
+
+function blockOp_Rotatex(array1, index1, array2, index2, opData)
+{
+    var sval = opData[0];
+    var cval = opData[1];
+    var ar = array1[index1];
+    var ai = array1[index1 + 1];
+    var br = array2[index2];
+    var bi = array2[index2 + 1];
+    array1[index1]     = (cval * ar) - (sval * br);
+    array1[index1 + 1] = (cval * ai) - (sval * bi);
+    array2[index2]     = (cval * br) + (sval * ar);
+    array2[index2 + 1] = (cval * bi) + (sval * ai);
+}
 
 QReg.prototype.rotatex = function (targetQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1556,8 +1646,6 @@ QReg.prototype.rotatex = function (targetQubits, thetaDegrees)
 
 QReg.prototype.crotatex = function (targetQubits, conditionQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1580,7 +1668,6 @@ QReg.prototype.crotatex = function (targetQubits, conditionQubits, thetaDegrees)
 
 QReg.prototype.y = function (targetQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     // TODO: This can be done without multiplication, similar to x()     
     if (targetQubits == null)   // this allows a missing arg to just affect the whole reg
         targetQubits = this.allBitsMask;
@@ -1591,7 +1678,6 @@ QReg.prototype.y = function (targetQubits, thetaDegrees)
 
 QReg.prototype.rotatey = function (targetQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1617,8 +1703,6 @@ QReg.prototype.rotatey = function (targetQubits, thetaDegrees)
 
 QReg.prototype.crotatey = function (targetQubits, conditionQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1642,7 +1726,6 @@ QReg.prototype.crotatey = function (targetQubits, conditionQubits, thetaDegrees)
 
 QReg.prototype.rotatez = function (targetQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1668,8 +1751,6 @@ QReg.prototype.rotatez = function (targetQubits, thetaDegrees)
 
 QReg.prototype.crotatez = function (targetQubits, conditionQubits, thetaDegrees)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1689,147 +1770,6 @@ QReg.prototype.crotatez = function (targetQubits, conditionQubits, thetaDegrees)
     var mtx2x2 = [[{real: cval, imag: -sval}, {real:   0.0, imag:  0.0}],
                   [{real: 0.0,  imag:   0.0}, {real:  cval, imag: sval}]];
     this.cop2x2(targetQubits, conditionQubits, blockOp_2x2, mtx2x2, mtx2x2);
-}
-
-//////////////////////////////////////////////////////////////
-// Pauli Product Rotation and Measurement
-//
-QReg.prototype.ppr = function (xyQubits, zyQubits, thetaDegrees)
-{
-    x_mask = to_bitfield(xyQubits);
-    z_mask = to_bitfield(zyQubits);
-    var all_mask = x_mask | z_mask;
-
-    var ctrl = bitfield_one;
-    var max_bit_length = getHighestBitIndex(all_mask) + 1;
-    var tgt = bitfield_one << to_bitfield(max_bit_length - 1);
-
-    // Pauli Y corrections    
-    if (x_mask & z_mask)
-    {
-        this.s_inv(x_mask & z_mask);
-        this.hadamard(x_mask & z_mask);
-    }
-
-    // Pauli X corrections
-    if (x_mask ^ (x_mask & z_mask))
-        this.hadamard(x_mask ^ (x_mask & z_mask));
-        
-    for (var i = 0; i < max_bit_length - 1; ++i)
-    {
-        if (ctrl & (x_mask | z_mask))
-            this.cnot(tgt, ctrl);
-        ctrl <<= bitfield_one;
-    }
-
-    this.rotatez(tgt, 2.0 * thetaDegrees);
-        
-    for (var i = 0; i < max_bit_length - 1; ++i)
-    {
-        ctrl >>= bitfield_one;
-        if (ctrl & (x_mask | z_mask))
-            this.cnot(tgt, ctrl);
-    }
-     
-    // Pauli X corrections        
-    if (x_mask ^ (x_mask & z_mask))
-        this.hadamard(x_mask ^ (x_mask & z_mask));
-    
-    // Pauli Y corrections
-    if (x_mask & z_mask)
-    {
-        this.hadamard(x_mask & z_mask);
-        this.s(x_mask & z_mask);
-    }
-}
-
-function is_single_qubit(mask)
-{
-    return mask != bitfield_zero && ((mask & (mask - bitfield_one)) == bitfield_zero);
-}
-
-QReg.prototype.ppm = function (xyQubits, zyQubits, sign)
-{
-    x_mask = to_bitfield(xyQubits);
-    z_mask = to_bitfield(zyQubits);
-    var all_mask = x_mask | z_mask;
-    var result = 0;
-    // single qubit measurements are destructive:
-
-    if ((!x_mask) && is_single_qubit(z_mask))
-    {
-        // z basis
-        result = this.read(z_mask) ? 1 : 0;
-        if (sign == -1)
-            this.x(z_mask);
-    }
-    else if ((!z_mask) && is_single_qubit(x_mask))
-    {
-        // x basis
-        this.rotatey(x_mask, -90.0);
-        result = this.read(x_mask) ? 1 : 0;
-        if (sign == -1)
-            this.x(x_mask);
-    }
-    else if (is_single_qubit(x_mask) && is_single_qubit(z_mask) && x_mask==z_mask)
-    {
-        // y basis
-        this.rotatex(x_mask, 90.0);
-        result = this.read(x_mask) ? 1 : 0;
-        if (sign == -1)
-            x(x_mask);
-    }
-    else
-    {
-        // multi qubit measurements are just like PPRs
-        // except replace `qc.rz` with `qc.read`
-        var ctrl = bitfield_one;
-        var max_bit_length = getHighestBitIndex(all_mask) + 1;
-        var tgt = bitfield_one << to_bitfield(max_bit_length - 1);
-        
-        // Pauli Y corrections    
-        if (x_mask & z_mask)
-        {
-            // TODO: Test rx(90) instead of these two. It may be faster.
-            this.s_inv(x_mask & z_mask);
-            this.hadamard(x_mask & z_mask);
-        }
-
-        // Pauli X corrections
-        if (x_mask ^ (x_mask&z_mask))
-            this.hadamard(x_mask ^ (x_mask & z_mask));
-            
-        for (var i = 0; i < max_bit_length - 1; ++i)
-        {
-            if (ctrl & (x_mask | z_mask))
-                this.cnot(tgt, ctrl);
-            ctrl <<= bitfield_one;
-        }
-        
-        result = this.read(tgt) ? 1 : 0;
-        if (sign == -1)
-            this.x(tgt);
-            
-        for (var i = 0; i < max_bit_length - 1; ++i)
-        {
-            ctrl >>= 1;
-            if (ctrl & (x_mask | z_mask))
-                this.cnot(tgt, ctrl);
-        }
-         
-        // Pauli X corrections        
-        if (x_mask ^ (x_mask & z_mask))
-            this.hadamard(x_mask ^ (x_mask & z_mask));
-        
-        // Pauli Y corrections        
-        if (x_mask & z_mask)
-        {
-            this.hadamard(x_mask&z_mask);
-            this.s(x_mask&z_mask);
-        }
-    }
-    this.most_recent_ppm_result = result;
-    return result;
 }
 
 //////////////////////////////////////////////////////////////
@@ -1860,28 +1800,8 @@ function blockOp_RootNot(array1, index1, array2, index2, opData)
     }
 }
 
-QReg.prototype.s = function(targetQubits, conditionQubits)
-{
-    this._phaseShift(targetQubits, conditionQubits, 90);
-}
-
-QReg.prototype.s_inv = function(targetQubits, conditionQubits)
-{
-    this._phaseShift(targetQubits, conditionQubits, -90);
-}
-QReg.prototype.t = function(targetQubits, conditionQubits)
-{
-    this._phaseShift(targetQubits, conditionQubits, 45);
-}
-
-QReg.prototype.t_inv = function(targetQubits, conditionQubits)
-{
-    this._phaseShift(targetQubits, conditionQubits, -45);
-}
-
 QReg.prototype.rootnot = function (targetQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1900,14 +1820,9 @@ QReg.prototype.rootnot = function (targetQubits)
     var mtx2x2 = [[{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}],
                   [{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}]];
     this.op2x2(targetQubits, blockOp_RootNot, 1, mtx2x2);
-    // Here's the construction, in case we need it later
-    // this.hadamard(targetQubits);
-    // this.s(targetQubits);
-    // this.hadamard(targetQubits);
 }
 QReg.prototype.rootnot_inv = function (targetQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1926,16 +1841,10 @@ QReg.prototype.rootnot_inv = function (targetQubits)
     var mtx2x2 = [[{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}],
                   [{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}]];
     this.op2x2(targetQubits, blockOp_RootNot, -1, mtx2x2);
-    // Here's the construction, in case we need it later
-    // this.hadamard(targetQubits);
-    // this.s_inv(targetQubits);
-    // this.hadamard(targetQubits);
 }
 
 QReg.prototype.crootnot = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1952,15 +1861,9 @@ QReg.prototype.crootnot = function (targetQubits, conditionQubits)
     var mtx2x2 = [[{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}],
                   [{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}]];
     this.cop2x2(targetQubits, conditionQubits, blockOp_RootNot, 1, mtx2x2);
-    // Here's the construction, in case we need it later
-    // this.hadamard(targetQubits, conditionQubits);
-    // this.s(targetQubits, conditionQubits);
-    // this.hadamard(targetQubits, conditionQubits);
 }
 QReg.prototype.crootnot_inv = function (targetQubits, conditionQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
-    conditionQubits = to_bitfield(conditionQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -1977,45 +1880,8 @@ QReg.prototype.crootnot_inv = function (targetQubits, conditionQubits)
     var mtx2x2 = [[{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}],
                   [{real: 0.0, imag: 0.0}, {real: 0.0, imag: 0.0}]];
     this.cop2x2(targetQubits, conditionQubits, blockOp_RootNot, -1, mtx2x2);
-    // Here's the construction, in case we need it later
-    // this.hadamard(targetQubits, conditionQubits);
-    // this.s_inv(targetQubits, conditionQubits);
-    // this.hadamard(targetQubits, conditionQubits);
 }
 
-// TODO: If performance becomes a concern, make this a 2x2
-QReg.prototype.rooty = function (targetQubits)
-{
-    this.s_inv(targetQubits);
-    this.hadamard(targetQubits);
-    this.s(targetQubits);
-    this.hadamard(targetQubits);
-    this.s(targetQubits);
-}
-QReg.prototype.rooty_inv = function (targetQubits)
-{
-    this.s_inv(targetQubits);
-    this.hadamard(targetQubits);
-    this.s_inv(targetQubits);
-    this.hadamard(targetQubits);
-    this.s(targetQubits);
-}
-QReg.prototype.crooty = function (targetQubits, conditionQubits)
-{
-    this.s_inv(targetQubits, conditionQubits);
-    this.hadamard(targetQubits, conditionQubits);
-    this.s(targetQubits, conditionQubits);
-    this.hadamard(targetQubits, conditionQubits);
-    this.s(targetQubits, conditionQubits);
-}
-QReg.prototype.crooty_inv = function (targetQubits, conditionQubits)
-{
-    this.s_inv(targetQubits, conditionQubits);
-    this.hadamard(targetQubits, conditionQubits);
-    this.s_inv(targetQubits, conditionQubits);
-    this.hadamard(targetQubits, conditionQubits);
-    this.s(targetQubits, conditionQubits);
-}
 
 
 
@@ -2112,7 +1978,6 @@ QReg.prototype.setZero = function()
 // this is used for post-selection.
 QReg.prototype.read = function (targetQubits, force_zero, force_one)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -2120,7 +1985,8 @@ QReg.prototype.read = function (targetQubits, force_zero, force_one)
     }
     if (targetQubits == null)	// this allows a missing arg to just affect the whole reg
         targetQubits = this.allBitsMask;
-    if (!targetQubits)
+    if (isAllZero(targetQubits))
+//        return intToBitField(0);
         return 0;
     if (!this.active)
     {
@@ -2132,21 +1998,27 @@ QReg.prototype.read = function (targetQubits, force_zero, force_one)
 
     if (this.chp && this.chp.active)
     {
-        var low_targ = getLowestBitIndex(targetQubits);
-        var high_targ = getHighestBitIndex(targetQubits);
+        var low_targ = targetQubits.getLowestBitIndex();
+        var high_targ = targetQubits.getHighestBitIndex();
 
-        var result_bf = 0;
+        var result_bf = new BitField(0, this.numQubits);
         for (var targ = low_targ; targ <= high_targ; ++targ)
         {
-            if (getBit(targetQubits, targ))
+            if (targetQubits.getBit(targ))
             {
                 var bit = this.chp.measure(null, targ);
                 if (bit & 1)
-                    result_bf |= 1 << targ;
+                    result_bf.setBit(targ, 1);
             }
         }
         this.changed();
-        return this.mask_type(result_bf);
+        if (this.numQubits <= 32)
+        {
+            var result_int = bitFieldToInt(result_bf);
+            result_bf.recycle();
+            return result_int;
+        }
+        return result_bf;
     }
 
     if (this.disableSimulation)
@@ -2156,18 +2028,22 @@ QReg.prototype.read = function (targetQubits, force_zero, force_one)
         return result;
     }
 
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
     var loop_required_targetQubits = targetQubits;
     var resultBits = 0;
 
     // If the classical bits are valid, we're done.
     if (!fullDebugChecking)
     {
-        if ((to_bitfield(this.classicalBitsValid) & targetQubits) == targetQubits)
-            return (to_bitfield(this.classicalBits) & targetQubits);
+        if ((this.classicalBitsValid & targetQubits) == targetQubits)
+//            return intToBitField(this.classicalBits & targetQubits);
+            return (this.classicalBits & targetQubits);
 
         // For anything we already know, just fill it in.
-        resultBits |= to_bitfield(this.classicalBits & this.classicalBitsValid);
-        loop_required_targetQubits &= ~to_bitfield(this.classicalBitsValid);
+        resultBits |= this.classicalBits & this.classicalBitsValid;
+        loop_required_targetQubits &= ~this.classicalBitsValid;
     }
 
 
@@ -2237,12 +2113,12 @@ QReg.prototype.read = function (targetQubits, force_zero, force_one)
     this.setClassicalBits(targetQubits, resultBits);
 
     this.changed();
-    return to_bitfield(this.classicalBits) & targetQubits;
+    return this.classicalBits & targetQubits;
+//    return intToBitField(this.classicalBits & targetQubits);
 }
 
 QReg.prototype.writeAll = function (newValues)
 {
-    newValues = to_bitfield(newValues);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -2261,8 +2137,6 @@ QReg.prototype.writeAll = function (newValues)
 // to write, just read and then flip whatever bits don't match
 QReg.prototype.write = function (targetQubits, newValues, photon_count)
 {
-    targetQubits = to_bitfield(targetQubits);
-    newValues = to_bitfield(newValues);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -2291,19 +2165,20 @@ QReg.prototype.write = function (targetQubits, newValues, photon_count)
         this.core_sim.op_write(targetQubits, newValues);
         return;
     }
-    var bitsToFlip = to_bitfield(this.read(targetQubits));
-    bitsToFlip ^= to_bitfield(newValues);
-    bitsToFlip &= targetQubits;
 
-    if (bitsToFlip)
+    var bitsToFlip = intToBitField(this.read(targetQubits));
+    bitsToFlip.xorEquals(newValues);
+    bitsToFlip.andEquals(targetQubits);
+
+    if (!bitsToFlip.isAllZero())
         this.not(bitsToFlip);
+    bitsToFlip.recycle();
     this.changed();
 }
 
 // to postselect, just read with a forced value
 QReg.prototype.postselect = function (targetQubits, value)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -2335,7 +2210,6 @@ QReg.prototype.postselect = function (targetQubits, value)
 // to postselect, just read with a forced value
 QReg.prototype.postselect_qubit_pair = function (targetQubits)
 {
-    targetQubits = to_bitfield(targetQubits);
     // Handle mixed-state callthrough
     if (this.current_mix)
     {
@@ -2361,6 +2235,9 @@ QReg.prototype.postselect_qubit_pair = function (targetQubits)
     var low = targetQubits.getLowestBitIndex();
     var high = targetQubits.getHighestBitIndex();
     var mask = (1 << low) | (1 << high);
+    // TODO: Add bitfield support to the rest of this
+    //       For now it's not needed, since we're full-sim, so the QC size will be <= 32 bits
+    targetQubits = bitFieldToInt(targetQubits);
 
     for (var value = 0; value < this.numValues; ++value)
     {
@@ -2407,7 +2284,6 @@ QBlock.prototype.totalLengthSquared = function ()
 
 QReg.prototype.peekQubitProbability = function (targetQubit)
 {
-    targetQubit = to_bitfield(targetQubit);
     if (this.core_sim)
         return 0;
     var probability = this.storage.peekQubitProbability(targetQubit);
@@ -2417,7 +2293,6 @@ QReg.prototype.peekQubitProbability = function (targetQubit)
 
 QRegNode.prototype.peekQubitProbability = function (targetQubit)
 {
-    targetQubit = to_bitfield(targetQubit);
     if (targetQubit == this.bitValue)
         return this.tree[1].totalLengthSquared();
     else
@@ -2445,7 +2320,7 @@ QBlock.prototype.peekQubitProbability = function (targetQubit)
         column += targetQubit;
         for (var j = 0; j < targetQubit; ++j)
         {
-            index = column << 1;
+            index = column * 2;
             x = this.values[index];
             y = this.values[index + 1];
             probability += x * x + y * y;
@@ -2510,8 +2385,10 @@ QReg.prototype.pull_state = function ()
     return out_array;
 }
 
-QReg.prototype.push_state = function (new_values, normalize=true)
+QReg.prototype.push_state = function (new_values, normalize)
 {
+    if (normalize == null)
+        normalize = true;
     var expected_terms = this.numValues;
     var actual_terms = new_values.length;
     if (actual_terms == expected_terms)
@@ -2539,8 +2416,10 @@ QReg.prototype.push_state = function (new_values, normalize=true)
         this.renormalize();
 }
 
-QReg.prototype.check_state = function (check_values, epsilon=0.000001)
+QReg.prototype.check_state = function (check_values, epsilon)
 {
+    if (epsilon == null)
+        epsilon = 0.000001;
     var expected_terms = this.numValues;
     var actual_terms = check_values.length;
     if (actual_terms == expected_terms)
@@ -2586,8 +2465,15 @@ QReg.prototype.check_state = function (check_values, epsilon=0.000001)
 }
 
 
-QReg.prototype.print_state_vector_to_string = function (line=-1, min_value_to_print=0.000000001, max_num_values=1000)
+QReg.prototype.print_state_vector_to_string = function (line, min_value_to_print, max_num_values)
 {
+    // Default values (some browsers don't accept them in the declaration)
+    if (line == null)
+        line = -1;
+    if (min_value_to_print == null)
+        min_value_to_print = 0.000000001;
+    if (max_num_values == null)
+        max_num_values = 1000;
     var output = "";
     if (line >= 0)
         output += 'State vector at line '+line+':\n';
@@ -2599,10 +2485,7 @@ QReg.prototype.print_state_vector_to_string = function (line=-1, min_value_to_pr
         var value = this.storage.peekComplexValue(i);
         if (min_value_to_print <= 0.0 || Math.abs(value.x) >= min_value_to_print || Math.abs(value.y) >= min_value_to_print)
         {
-            // Make very tiny values print as 0.0
-            var vx = Math.round(value.x * 1e10) / 1e10;
-            var vy = Math.round(value.y * 1e10) / 1e10;
-            output += '|'+i+'\u27E9 ('+vx+', '+vy+')\n';
+            output += '|'+i+'&rangle; ('+value.x+', '+value.y+')\n';
             num_values_printed++;
             if (num_values_printed > max_num_values)
             {
@@ -2641,7 +2524,6 @@ QReg.prototype.pokeAllProbabilities = function (new_probabilities)
 
 QReg.prototype.peekComplexValue = function (targetValue)
 {
-    targetValue = to_bitfield(targetValue);
     // If any valid classical bits disagree with the target, then the value must be zero.
     if ((this.classicalBits & this.classicalBitsValid)
         != (targetValue & this.classicalBitsValid))
@@ -2721,7 +2603,7 @@ QBlock.prototype.peekMagnitude = function (targetValue)
 
 QReg.prototype.pokeComplexValue = function (targetValue, x, y)
 {
-    this.classicalBitsValid = bitfield_zero;
+    this.classicalBitsValid = 0;
     this.storage.pokeComplexValue(targetValue, x, y);
 }
 

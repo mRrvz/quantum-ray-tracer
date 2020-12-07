@@ -37,12 +37,13 @@
 
 
 var qc_options = {
-    start_qubits_from: 0,
-    double_ff_line: true,
-    auto_draw: true,
-    print_function: null,
-    max_staff_width: 1024,
-    max_staff_height: 1024
+    start_qubits_from:  0,
+    double_ff_line:     false,
+    auto_draw:          true,
+    print_function:     null,
+    max_staff_width:    1024,
+    max_staff_height:   1024,
+    draw_s_t_z_gates:   false,
 };    // A general bucket for collecting global options
 
 
@@ -51,21 +52,35 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
     this.qReg = null;
     this.op = op;
     if (targetQubits == null)
-        targetQubits = bitfield_zero;
+        targetQubits = 0;
     if (conditionQubits == null)
-        conditionQubits = bitfield_zero;
+        conditionQubits = 0;
     if (auxQubits == null)
-        auxQubits = bitfield_zero;
+        auxQubits = 0;
 
-    if (!(typeof(targetQubits) === 'number' || is_bitfield(targetQubits) || Array.isArray(targetQubits)))
-        console.log('Internal error: targetQubits type mismatch.');
-    if (!(typeof(conditionQubits) === 'number' || is_bitfield(conditionQubits) || Array.isArray(conditionQubits)))
-        console.log('Internal error: conditionQubits type mismatch.');
-
-    this.targetQubits = to_bitfield(targetQubits);
-    this.conditionQubits = to_bitfield(conditionQubits);
+    this.targetQubits = new BitField(targetQubits);
+    this.conditionQubits = new BitField(conditionQubits);
     if (auxQubits)
-        this.auxQubits = to_bitfield(auxQubits);
+        this.auxQubits = new BitField(auxQubits);
+//    if (targetQubits.isBitField)
+//    {
+//        this.targetQubitsBF = targetQubits;
+//        this.targetQubits = targetQubits.values[0];
+//    }
+//    if (conditionQubits.isBitField)
+//    {
+//        this.conditionQubitsBF = conditionQubits;
+//        this.conditionQubits = conditionQubits.values[0];
+//    }
+
+//console.log('makein ' + this.op
+//    + ' t:' + bitfieldHexString(targetQubits)
+//    + ' c:' + bitfieldHexString(conditionQubits)
+//    );
+//console.log('make ' + this.op
+//    + ' t:' + bitfieldHexString(this.targetQubits)
+//    + ' c:' + bitfieldHexString(this.conditionQubits)
+//    );
 
 
     this.codeLabel = codeLabel;
@@ -73,7 +88,12 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
     {
         // conditionQubits are used to pass in the value
         this.writeValue = conditionQubits;
-        this.conditionQubits = 0;
+        this.conditionQubits.set(0);
+        if (this.writeValue.length && this.writeValue.length > 0)
+        {
+            this.is_fock = true;
+            this.targetQubits = new BitField(~0);
+        }
     }
 
     this.theta = theta;
@@ -123,20 +143,12 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
             qReg.crootnot(this.targetQubits, this.conditionQubits);
         else if ((op == 'crootnot_inv' && direction > 0) || (op == 'crootnot' && direction < 0))
             qReg.crootnot_inv(this.targetQubits, this.conditionQubits);
-        else if ((op == 'crooty' && direction > 0) || (op == 'crooty_inv' && direction < 0))
-            qReg.crooty(this.targetQubits, this.conditionQubits);
-        else if ((op == 'crooty_inv' && direction > 0) || (op == 'crooty' && direction < 0))
-            qReg.crooty_inv(this.targetQubits, this.conditionQubits);
         else if ((op == 'rootexchange' && direction > 0) || (op == 'rootexchange_inv' && direction < 0))
             qReg.rootexchange(this.targetQubits, this.conditionQubits);
         else if ((op == 'rootexchange_inv' && direction > 0) || (op == 'rootexchange' && direction < 0))
             qReg.rootexchange(this.targetQubits, this.conditionQubits);
         else if (op == 'noise')
             qReg.noise(this.theta, this.targetQubits);
-        else if (op == 'ppr')
-            qReg.ppr(this.targetQubits, this.conditionQubits, this.theta);
-        else if (op == 'ppm')
-            qReg.ppm(this.targetQubits, this.conditionQubits, this.theta);
         else if (op == 'phase')
             qReg.multi_qubit_phase(this.targetQubits, this.conditionQubits, this.theta * direction);
         else if (op == 'optical_phase')
@@ -182,8 +194,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
         else if (op == 'peek')
         {
             // Peek at the values, to display them
-            var high = getHighestBitIndex(this.targetQubits);
-            var low = getLowestBitIndex(this.targetQubits);
+            var high = this.targetQubits.getHighestBitIndex();
+            var low = this.targetQubits.getLowestBitIndex();
             this.recentPeekValues = [];
             for (var bit = 0; bit < low; ++bit)
                 this.recentPeekValues.push(null);
@@ -257,9 +269,9 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
         ctx.fillStyle = 'white';
 
 
-        if (this.op == 'phase' || this.op == 'cphase' || this.op == 'z' || this.op == 'cz')
+        if (this.op == 'phase' || this.op == 'cphase')
         {
-            if (this.theta == 180 || this.op == 'z' || this.op == 'cz')
+            if (this.theta == 180 && qc_options.draw_s_t_z_gates)
             {
                 // Z gate
                 ctx.lineWidth = 1;
@@ -277,7 +289,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                 ctx.lineTo(x + hradx, y + hrady);
                 ctx.stroke();
             }
-            else if (this.theta == 90 || this.theta == -90)
+            else if ((this.theta == 90 || this.theta == -90) && qc_options.draw_s_t_z_gates)
             {
                 // S gate
                 ctx.lineWidth = 1;
@@ -309,7 +321,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                 ctx.lineTo(x - hradx, y + hrady);
                 ctx.stroke();
             }
-            else if (this.theta == 45 || this.theta == -45)
+            else if ((this.theta == 45 || this.theta == -45) && qc_options.draw_s_t_z_gates)
             {
                 // T gate
                 ctx.lineWidth = 1;
@@ -446,8 +458,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
         else if (this.op == 'postselect_qubit_pair')
         {
             var xwidth = radius / 0.8;
-            var high = getHighestBitIndex(this.targetQubits);
-            var low = getLowestBitIndex(this.targetQubits);
+            var high = this.targetQubits.getHighestBitIndex();
+            var low = this.targetQubits.getLowestBitIndex();
             if (high == low + 1)
             {
                 // Two lines right next to each other
@@ -477,8 +489,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
         }
         else if (this.op == 'pair_source')
         {
-            var high = getHighestBitIndex(this.targetQubits);
-            var low = getLowestBitIndex(this.targetQubits);
+            var high = this.targetQubits.getHighestBitIndex();
+            var low = this.targetQubits.getLowestBitIndex();
             ctx.fillStyle = '#f20';
             if (high == low)
                 fillCircle(ctx, x, y, staff.gridSize * 0.3);
@@ -495,8 +507,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                 || this.op == 'polarization_grating_in'
                 || this.op == 'polarization_grating_out')
         {
-            var high = getHighestBitIndex(this.targetQubits);
-            var low = getLowestBitIndex(this.targetQubits);
+            var high = this.targetQubits.getHighestBitIndex();
+            var low = this.targetQubits.getLowestBitIndex();
             if (high == low + 1)
             {
                 // Two lines right next to each other
@@ -648,8 +660,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                     }
                     else
                     {
-                        var drawSlope_down = getBit(staff.wire_grid[slot], low);
-                        var drawSlope_up = getBit(staff.wire_grid[slot], high);
+                        var drawSlope_down = staff.wire_grid[slot].getBit(low);
+                        var drawSlope_up = staff.wire_grid[slot].getBit(high);
                         var draw_a = drawSlope_down;
                         var draw_b = drawSlope_up;
                         if (qubitIndex == high)
@@ -671,7 +683,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                 }
                 ctx.stroke();
 
-                if (this.conditionQubits)
+                if (!isAllZero(this.conditionQubits))
                 {
                     // Thicken the X
                     ctx.lineWidth = 2;
@@ -691,8 +703,8 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                     ctx.stroke();
 
                     // Repair the condition line if it's there.
-                    var high_cond = getHighestBitIndex(this.conditionQubits);
-                    var low_cond = getLowestBitIndex(this.conditionQubits);
+                    var high_cond = this.conditionQubits.getHighestBitIndex();
+                    var low_cond = this.conditionQubits.getLowestBitIndex();
                     var do_line = false;
                     if (qubitIndex == low)
                     {
@@ -781,11 +793,11 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
                 {
                     // exchange, separated
                     var important_bits = 0;
-                    if (getBit(staff.wire_grid[slot], high))
+                    if (staff.wire_grid[slot].getBit(high))
                         important_bits++;
-                    if (getBit(staff.wire_grid[slot], low))
+                    if (staff.wire_grid[slot].getBit(low))
                         important_bits++;
-                    if (important_bits == 2 || this.conditionQubits)
+                    if (important_bits == 2 || !isAllZero(this.conditionQubits))
                     {
                         ctx.lineWidth = 2;
                         ctx.beginPath();
@@ -974,7 +986,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
             }
             ctx.stroke();
         }
-        else if (this.op == 'crootnot' || this.op == 'crootnot_inv' || this.op == 'crooty' || this.op == 'crooty_inv')
+        else if (this.op == 'crootnot' || this.op == 'crootnot_inv')
         {
             ctx.lineWidth = 1;
             ctx.fillStyle = 'white';
@@ -985,32 +997,12 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
             ctx.beginPath();
             var hradx = 0.4 * radius;
             var hrady = 0.6 * radius;
-            if (this.op == 'crootnot_inv' || this.op == 'crooty_inv')
+            if (this.op == 'crootnot_inv')
                 hradx = -hradx;
             ctx.lineTo(x - 2.0 * hradx, y + 0.25 * hrady);
             ctx.lineTo(x - hradx, y + hrady);
             ctx.lineTo(x, y - hrady);
             ctx.lineTo(x + 2.0 * hradx, y - hrady);
-
-            var marker_scale = 0.6;
-            var marker_offx = 0.8 * hradx;
-            var marker_offy = 0.35 * hrady;
-
-            if (this.op == 'crootnot' || this.op == 'crootnot_inv')
-            {
-                ctx.moveTo(x - hradx * marker_scale + marker_offx, y - hrady * marker_scale + marker_offy);
-                ctx.lineTo(x + hradx * marker_scale + marker_offx, y + hrady * marker_scale + marker_offy);
-                ctx.moveTo(x + hradx * marker_scale + marker_offx, y - hrady * marker_scale + marker_offy);
-                ctx.lineTo(x - hradx * marker_scale + marker_offx, y + hrady * marker_scale + marker_offy);
-            }
-            else if (this.op == 'crooty' || this.op == 'crooty_inv')
-            {
-                ctx.moveTo(x + marker_offx + hradx * marker_scale, y - hrady * marker_scale + marker_offy);
-                ctx.lineTo(x + marker_offx, y + marker_offy);
-                ctx.moveTo(x + marker_offx - hradx * marker_scale, y - hrady * marker_scale + marker_offy);
-                ctx.lineTo(x + marker_offx, y + marker_offy);
-                ctx.lineTo(x + marker_offx, y + hrady * marker_scale + marker_offy);
-            }
             ctx.stroke();
         }
         else if (this.op == 'read' || this.op == 'postselect')
@@ -1098,7 +1090,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
             var rady = 0.7 * radius;
             if (qc_options.show_write_bit_values)  // Draw the write input value
             {
-                if (getBit(this.writeValue, qubitIndex))
+                if (getBitfieldBit(this.writeValue, qubitIndex))
                 {
                     // Make it glow
                     ctx.fillStyle = '#ffa';
@@ -1152,7 +1144,7 @@ function QInstruction(op, targetQubits, conditionQubits, theta, codeLabel, auxQu
             {
                 ctx.lineWidth = 1.5;
                 ctx.strokeStyle = '#48f';
-                if (getBit(this.writeValue, qubitIndex))
+                if (getBitfieldBit(this.writeValue, qubitIndex))
                 {
                     // Draw a little one
                     ctx.beginPath();
@@ -1375,7 +1367,6 @@ function QStaff(qReg, qPanel, pos)
             delete inst;
         }
         this.instructions = new Array();
-        this.codeLabel = '';
 //        this.draw();
     }
 
@@ -1620,7 +1611,7 @@ function QStaff(qReg, qPanel, pos)
         }
         this.qReg.animateWidgets = anim_val;
 //        this.draw();
-        if (this.qReg.animateWidgets && (typeof qc !== 'undefined') && qc && qc.panel_chart)
+        if (this.qReg.animateWidgets && qc && qc.panel_chart)
             qc.panel_chart.startAnimation(instruction);
     }
 
@@ -1734,13 +1725,13 @@ function QStaff(qReg, qPanel, pos)
             var ratio = 0.5;
             for (var bit = 0; bit < this.qReg.numQubits; ++bit)
             {
-                if (getBit(instruction.targetQubits, bit))
+                if (instruction.targetQubits.getBit(bit))
                 {
                     ypos = bit;
                     break;
                 }
             }
-            if (instruction.op == "exchange" && !instruction.conditionQubits)
+            if (instruction.op == "exchange" && isAllZero(instruction.conditionQubits))
             {
                 lojs.push({'type':'crossing','x':xpos,'y':ypos});
             }
@@ -1805,13 +1796,13 @@ function QStaff(qReg, qPanel, pos)
             var ratio = 0.5;
             for (var bit = 0; bit < this.qReg.numQubits; ++bit)
             {
-                if (getBit(instruction.targetQubits, bit))
+                if (instruction.targetQubits.getBit(bit))
                 {
                     ypos = bit;
                     break;
                 }
             }
-            if (instruction.op == "beamsplitter" && !instruction.conditionQubits)
+            if (instruction.op == "beamsplitter" && isAllZero(instruction.conditionQubits))
             {
                 usage[ypos][xpos] = true;
                 usage[ypos + 1][xpos] = true;
@@ -1901,7 +1892,7 @@ function QStaff(qReg, qPanel, pos)
                 var str = '';
                 for (var bit = 0; bit < this.qReg.numQubits; ++bit)
                 {
-                    if (getBit(instruction.targetQubits, bit))
+                    if (instruction.targetQubits.getBit(bit))
                     {
                         ypos = bit;
                         str += indent + 'rail_ports['+ypos+'] = array.ports[next_grating]\n';
@@ -1912,8 +1903,8 @@ function QStaff(qReg, qPanel, pos)
             }
             else if (instruction.op == "dual_rail_beamsplitter")
             {
-                var low_pos = getLowestBitIndex(instruction.targetQubits);
-                var high_pos = getHighestBitIndex(instruction.targetQubits);
+                var low_pos = instruction.targetQubits.getLowestBitIndex();
+                var high_pos = instruction.targetQubits.getHighestBitIndex();
                 var is_mzi = false;
                 if (inst < this.instructions.length - 2)
                 {
@@ -1921,10 +1912,10 @@ function QStaff(qReg, qPanel, pos)
                     var instruction3 = this.instructions[inst + 2];
                     if (instruction2.op == "phase" && instruction3.op == "dual_rail_beamsplitter")
                     {
-                        var ph_low = getLowestBitIndex(instruction2.conditionQubits);
-                        var ph_high = getHighestBitIndex(instruction2.conditionQubits);
-                        var bs_low = getLowestBitIndex(instruction3.targetQubits);
-                        var bs_high = getHighestBitIndex(instruction3.targetQubits);
+                        var ph_low = instruction2.conditionQubits.getLowestBitIndex();
+                        var ph_high = instruction2.conditionQubits.getHighestBitIndex();
+                        var bs_low = instruction3.targetQubits.getLowestBitIndex();
+                        var bs_high = instruction3.targetQubits.getHighestBitIndex();
                         if (ph_low == ph_high && (ph_low == low_pos || ph_low == high_pos))
                         {
                             if (bs_low == low_pos && bs_high == high_pos)
@@ -1966,8 +1957,8 @@ function QStaff(qReg, qPanel, pos)
             }
             else if (instruction.op == "phase")
             {
-                var low_pos = getLowestBitIndex(instruction.conditionQubits);
-                var high_pos = getHighestBitIndex(instruction.conditionQubits);
+                var low_pos = instruction.conditionQubits.getLowestBitIndex();
+                var high_pos = instruction.conditionQubits.getHighestBitIndex();
                 var str = '';
                 var is_cz = false;
                 if (low_pos != high_pos && instruction.theta > 179.9 && instruction.theta < 180.1)
@@ -2100,105 +2091,15 @@ function QStaff(qReg, qPanel, pos)
                 // First just get the min and max bits used
                 for (var bit = 0; bit < this.max_bits_to_draw; ++bit)
                 {
-                    if (getBit(instruction.targetQubits, bit)
-                        || getBit(instruction.conditionQubits, bit))
+                    if (instruction.targetQubits.getBit(bit)
+                        || instruction.conditionQubits.getBit(bit))
                     {
                         if (minBit > bit) minBit = bit;
                         if (maxBit < bit) maxBit = bit;
                     }
                 }
 
-                if (instruction.op == 'ppr' || instruction.op == 'ppm')
-                {
-                    console.log(this.op);
-                    // Pauli-Product Rotations and Measurements
-                    var dx = this.gridSize * 0.4;
-                    var tb = this.gridSize * 0.4;
-                    var xy_mask = instruction.targetQubits;
-                    var zy_mask = instruction.conditionQubits;
-                    var high = Math.max(getHighestBitIndex(xy_mask), getHighestBitIndex(zy_mask));
-                    var low = Math.min(getLowestBitIndex(xy_mask), getLowestBitIndex(zy_mask));
-                    if (!xy_mask)
-                        low = getLowestBitIndex(zy_mask);
-                    else if (!zy_mask)
-                        low = getLowestBitIndex(xy_mask);
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = 'black';
-                    ctx.fillStyle = '#888';
-                    if (instruction.op == 'ppr')
-                    {
-                        if (instruction.theta >= 90.0)
-                            ctx.fillStyle = '#ca8';
-                        else if (instruction.theta >= 45.0)
-                            ctx.fillStyle = '#8b8';
-                        else
-                            ctx.fillStyle = '#88f';
-                        ctx.fillRect(-dx, this.gridSize * low  - dx, 2 * dx, 2 * dx + this.gridSize * (high - low));
-                        ctx.strokeRect(-dx, this.gridSize * low  - dx, 2 * dx, 2 * dx + this.gridSize * (high - low));
-                    }
-                    else
-                    {
-                        var corner = 0.65;
-                        ctx.fillStyle = '#ccf';
-                        ctx.beginPath();
-                        ctx.moveTo(-dx, this.gridSize * low  - tb);
-                        ctx.lineTo( dx - dx * corner, this.gridSize * low  - tb);
-                        ctx.lineTo( dx, this.gridSize * low  - tb + dx * corner);
-                        ctx.lineTo( dx, this.gridSize * high + tb - dx * corner);
-                        ctx.lineTo( dx - dx * corner, this.gridSize * high + tb);
-                        ctx.lineTo(-dx, this.gridSize * high + tb);
-                        ctx.lineTo(-dx, this.gridSize * low  - tb);
-                        ctx.fill();
-                        ctx.stroke();
-                    }
-                    ctx.fillStyle = 'black';
-                    // Draw the letters
-                    for (var i = low; i <= high; ++i)
-                    {
-                        var x = 0;
-                        var y = i * this.gridSize;
-                        var radius = this.gridSize * 0.4;
-                        var pauli = getBit(xy_mask, i) | (getBit(zy_mask, i) << 1);
-                        if (pauli == 1)
-                        {  // X
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            var hradx = 0.4 * radius;
-                            var hrady = 0.6 * radius;
-                            ctx.moveTo(x - hradx, y - hrady);
-                            ctx.lineTo(x + hradx, y + hrady);
-                            ctx.moveTo(x - hradx, y + hrady);
-                            ctx.lineTo(x + hradx, y - hrady);
-                            ctx.stroke();
-                        }
-                        else if (pauli == 2)
-                        { // Z
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            var hradx = 0.4 * radius;
-                            var hrady = 0.4 * radius;
-                            ctx.moveTo(x - hradx, y - hrady);
-                            ctx.lineTo(x + hradx * 0.7, y - hrady);
-                            ctx.lineTo(x - hradx * 0.7, y + hrady);
-                            ctx.lineTo(x + hradx, y + hrady);
-                            ctx.stroke();
-                        }
-                        else if (pauli == 3)
-                        { // Y
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            var hradx = 0.4 * radius;
-                            var hrady = 0.6 * radius;
-                            ctx.moveTo(x - hradx, y - hrady);
-                            ctx.lineTo(x, y);
-                            ctx.lineTo(x + hradx, y - hrady);
-                            ctx.moveTo(x, y);
-                            ctx.lineTo(x, y + hrady);
-                            ctx.stroke();
-                        }
-                    }
-                }
-                else if (instruction.conditionQubits
+                if (!instruction.conditionQubits.isAllZero()
                     || instruction.op == 'exchange'
                     || instruction.op == 'rootexchange'
                     || instruction.op == 'rootexchange_inv'
@@ -2265,11 +2166,11 @@ function QStaff(qReg, qPanel, pos)
                                 var old_targ = false;
                                 for (var bit = minBit; bit <= maxBit; ++bit)
                                 {
-                                    var is_cond = getBit(instruction.conditionQubits, bit);
-                                    var is_targ = getBit(instruction.targetQubits, bit);
+                                    var is_cond = instruction.conditionQubits.getBit(bit);
+                                    var is_targ = instruction.targetQubits.getBit(bit);
                                     if (is_cond || is_targ)
                                     {
-                                        var is_classical = !getBit(this.wire_grid[slot], bit);
+                                        var is_classical = !this.wire_grid[slot].getBit(bit);
                                         if ((is_cond && is_classical) || (old_cond && old_classical))
                                         {
                                             ctx.beginPath();
@@ -2311,8 +2212,6 @@ function QStaff(qReg, qPanel, pos)
                         || (instruction.op == 'crotatex')
                         || (instruction.op == 'crotatey')
                         || (instruction.op == 'crotatez')
-                        || (instruction.op == 'ppr')
-                        || (instruction.op == 'ppm')
                         )
                     {
                         ctx.save();
@@ -2340,21 +2239,20 @@ function QStaff(qReg, qPanel, pos)
                             if (eta != 0.5) // 0.5 splitters are so common, no need to label
                                 label += eta;
                         }
-                        else if (instruction.op == 'ppm')
-                        {
-                            label = (instruction.theta < 0.0) ? '-' : '';
-                        }
                         else
                         {
                             var special_phase = false;
                             if (instruction.op == 'phase')
                             {
                                 // No label for a simple CZ
-//                                if (countOneBits(instruction.conditionQubits) > 1)
+//                                if (instruction.conditionQubits.countOneBits() > 1)
                                 {
-                                    if (instruction.theta == 180.0
-                                        || instruction.theta == 90.0
-                                        || instruction.theta == 45.0)
+                                    if ((instruction.theta == 180.0 && instruction.conditionQubits.countOneBits() + instruction.targetQubits.countOneBits() > 1)
+                                        || (instruction.theta == 90.0 && qc_options.draw_s_t_z_gates)
+                                        || (instruction.theta == -90.0 && qc_options.draw_s_t_z_gates)
+                                        || (instruction.theta == 45.0 && qc_options.draw_s_t_z_gates)
+                                        || (instruction.theta == -45.0 && qc_options.draw_s_t_z_gates)
+                                        )
                                         special_phase = true;
                                 }
                             }
@@ -2382,15 +2280,11 @@ function QStaff(qReg, qPanel, pos)
 //        + ' t:' + bitfieldHexString(instruction.targetQubits)
 //        + ' c:' + bitfieldHexString(instruction.conditionQubits)
 //        );
-                    var is_targ = getBit(instruction.targetQubits, bit);
-                    var is_cond = getBit(instruction.conditionQubits, bit);
-                    var num_targ = countOneBits(instruction.targetQubits);
-                    var num_cond = countOneBits(instruction.conditionQubits);
-                    if (instruction.op == 'ppr' || instruction.op == 'ppm')
-                    {
-                    }
-                    else if ((instruction.op == 'phase' || instruction.op == 'z' || instruction.op == 'cz')
-                             && (is_targ || is_cond))
+                    var is_targ = instruction.targetQubits.getBit(bit);
+                    var is_cond = instruction.conditionQubits.getBit(bit);
+                    var num_targ = instruction.targetQubits.countOneBits();
+                    var num_cond = instruction.conditionQubits.countOneBits();
+                    if (instruction.op == 'phase' && (is_targ || is_cond))
                     {
                         if (is_targ || is_cond)
                         {
@@ -2404,10 +2298,10 @@ function QStaff(qReg, qPanel, pos)
                                     do_large_phase_marker = true;
                                 }
                             }
-                            else if (instruction.theta == 45.0 ||
+                            else if ((instruction.theta == 45.0 ||
                                 instruction.theta == -45.0 ||
                                 instruction.theta == 90.0 ||
-                                instruction.theta == -90.0)
+                                instruction.theta == -90.0) && qc_options.draw_s_t_z_gates)
                             {
                                 if (is_targ || num_targ == 0)
                                     do_large_phase_marker = true;
@@ -2417,11 +2311,6 @@ function QStaff(qReg, qPanel, pos)
                                 if (is_targ || num_targ == 0 || num_targ == 1)
                                     do_large_phase_marker = true;
                             }
-
-                            // Exception for simple multi-dot Z and CZ
-                            if ((num_targ == 0 && num_cond > 1)
-                                || (num_targ == 1 && num_cond > 0))
-                                do_large_phase_marker = false;
 
                             if (do_large_phase_marker)
                             {
@@ -2443,7 +2332,7 @@ function QStaff(qReg, qPanel, pos)
 //        );
                         instruction.draw(ctx, 0, this.gridSize * bit, radius, bit, this, instruction_x, slot);
                     }                    
-                    else if (instruction.auxQubits && getBit(instruction.auxQubits, bit)
+                    else if (instruction.auxQubits && instruction.auxQubits.getBit(bit)
                             && instruction.op == 'dual_rail_beamsplitter')
                     {
                         // Draw the aux line (empty waveguide, usually postselected afterward)
@@ -2458,7 +2347,7 @@ function QStaff(qReg, qPanel, pos)
                         var x = 0;
                         var y = this.gridSize * bit;
                         var xwidth = this.gridSize * 0.25;
-                        var high_targ = getHighestBitIndex(instruction.targetQubits);
+                        var high_targ = instruction.targetQubits.getHighestBitIndex();
                         var dir_up = (high_targ < bit) ? 1 : -1;
                         ctx.strokeStyle = 'white';
                         ctx.lineWidth = 2;
@@ -2507,8 +2396,8 @@ function QStaff(qReg, qPanel, pos)
                                 if (num_cond + num_targ > 1 && num_targ <= 1)
                                     cz_dots = true;
                             }
-                            else if (instruction.theta == 45.0 || instruction.theta == -45.0
-                                    || instruction.theta == 90.0 || instruction.theta == -90.0)
+                            else if ((instruction.theta == 45.0 || instruction.theta == -45.0
+                                    || instruction.theta == 90.0 || instruction.theta == -90.0) && qc_options.draw_s_t_z_gates)
                             {
                                 // if there's at least one target
                                 if (num_targ > 0)
@@ -2565,8 +2454,8 @@ function QStaff(qReg, qPanel, pos)
                         }
                         else if (instruction.op == 'pair_source')
                         {
-                            var high = getHighestBitIndex(instruction.conditionQubits);
-                            var low = getLowestBitIndex(instruction.conditionQubits);
+                            var high = instruction.conditionQubits.getHighestBitIndex();
+                            var low = instruction.conditionQubits.getLowestBitIndex();
                             ctx.fillStyle = '#08f';
                             if (high == low)
                                 fillCircle(ctx, 0, this.gridSize * bit, this.gridSize * 0.3);
@@ -2706,7 +2595,7 @@ function QStaff(qReg, qPanel, pos)
                 {
                     x1 = (col - 1.0) * gx;
                     x2 = (col + 0.0) * gx;
-                    if (getBit(this.wire_grid[col], bit))
+                    if (this.wire_grid[col].getBit(bit))
                         new_style = dark;
                     else
                         new_style = light;
@@ -2750,9 +2639,6 @@ function QStaff(qReg, qPanel, pos)
 
     this.draw = function(hideInsertionPoint, instructionRange)
     {
-        if (this.qPanel.canvas == null)
-            return;
-
         this.calculateScale();
 
         if (instructionRange)
@@ -2993,9 +2879,15 @@ function QStaff(qReg, qPanel, pos)
         this.wire_grid = new Array(num_columns);
         // Start with all wires "on"
         for (var col = 0; col < num_columns; ++col)
-            this.wire_grid[col] = bitfield_zero;
-
-        var brush = bitfield_zero;
+//        for (var row = 0; row < num_rows; ++row)
+        {
+            this.wire_grid[col] = new BitField(0, this.qReg.allBitsMask.numBits);
+//            this.wire_grid[row] = new Array(num_columns);
+//            for (var col = 0; col < num_columns; ++col)
+//                this.wire_grid[row][col] = 1;
+        }
+        var brush = new BitField(0, this.qReg.allBitsMask.numBits);
+        var scratch = new BitField(0, this.qReg.allBitsMask.numBits);
         var old_col = -1;
         for (var inst_index = 0; inst_index < this.instructions.length; ++inst_index)
         {
@@ -3004,7 +2896,7 @@ function QStaff(qReg, qPanel, pos)
 
             if (col > old_col)
             {
-                this.wire_grid[col] = brush;
+                this.wire_grid[col].set(brush);
                 old_col = col;
             }
 //            console.log('set col'+col+' to '+brush.values[0]);
@@ -3012,32 +2904,27 @@ function QStaff(qReg, qPanel, pos)
             if (inst.op == 'read' || inst.op == 'postselect' 
                 || inst.op == 'discard' || inst.op == 'push_mixed')
             {
-                brush &= ~inst.targetQubits;
+                scratch.set(inst.targetQubits);
+                scratch.invert();
+                brush.andEquals(scratch);
             }
             else if (inst.op == 'exchange')
             {
-                var high_pos = getHighestBitIndex(inst.targetQubits);
-                var high_val = getBit(brush, high_pos);
-                var low_pos = getLowestBitIndex(inst.targetQubits);
-                var low_val = getBit(brush, low_pos);
-                if (low_val)
-                    brush |= bitfield_one << to_bitfield(high_pos);
-                else
-                    brush &= ~(bitfield_one << to_bitfield(high_pos));
-
-                if (high_val)
-                    brush |= bitfield_one << to_bitfield(low_pos);
-                else
-                    brush &= ~(bitfield_one << to_bitfield(low_pos));
+                var high_pos = inst.targetQubits.getHighestBitIndex();
+                var high_val = brush.getBit(high_pos);
+                var low_pos = inst.targetQubits.getLowestBitIndex();
+                var low_val = brush.getBit(low_pos);
+                brush.setBit(high_pos, low_val);
+                brush.setBit(low_pos, high_val);
             }
             else if (inst.op == 'polarization_grating_out')
             {
-                var high_pos = getHighestBitIndex(inst.targetQubits);
-                var low_pos = getLowestBitIndex(inst.targetQubits);
+                var high_pos = inst.targetQubits.getHighestBitIndex();
+                var low_pos = inst.targetQubits.getLowestBitIndex();
                 if (inst.theta < 0)
-                    brush &= this.qReg.allBitsMask & ~(bitfield_one << to_bitfield(low_pos));
+                    brush.setBit(low_pos, 0);
                 else
-                    brush &= this.qReg.allBitsMask & ~(bitfield_one << to_bitfield(high_pos));
+                    brush.setBit(high_pos, 0);
             }
             else if (inst.op == 'nop' || inst.op == 'peek'
                     || inst.op == 'not' || inst.op == 'cnot'
@@ -3048,16 +2935,15 @@ function QStaff(qReg, qPanel, pos)
             }
             else if (inst.op == 'pair_source')
             {
-                brush |= inst.conditionQubits;
-                brush |= inst.targetQubits;
+                brush.orEquals(inst.conditionQubits);
+                brush.orEquals(inst.targetQubits);
             }
             else
             {
-                if (inst.targetQubits)
-                    brush |= inst.targetQubits;
+                brush.orEquals(inst.targetQubits);
             }
         }
-        this.wire_grid[num_columns - 1] = brush;
+        this.wire_grid[num_columns - 1].set(brush);
     }
 
     this.getFullWidth = function ()
@@ -3117,13 +3003,55 @@ function QStaff(qReg, qPanel, pos)
 //        this.qPanel.canvas.height = this.getFullHeight();
         this.draw(true); // Hide the insertion point
     }
+/*
+    this.doCommonReductions = function()
+    {
+        for (var qubitIndex = 0; qubitIndex < this.qReg.numQubits; ++qubitIndex)
+        {
+            var bit_inst = [];
+            var bit_ct = [];
+            var prev2 = null;
+            var prev = null;
+            var curr = null;
+            // Build a packed list
+            for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
+            {
+                var new_curr = this.instructions[instIndex];
+                if (curr.conditionQubits.getBit(qubitIndex))
+                {
+                    prev2 = prev;
+                    prev = curr;
+                    curr = new_curr;
 
-
+                if (prev && curr.op == 'phase' && prev.op == 'phase')
+                {
+                    if (prev.conditionQubits.countOneBits() == 1
+                        && prev.conditionQubits.countOneBits() == 1)
+                }
+                if (curr.targetQubits.getBit(qubitIndex))
+                {
+                    bit_inst.push(curr);
+                    bit_ct.push('t');
+                }
+                if (curr.targetQubits.getBit(qubitIndex))
+                {
+                    bit_inst.push(curr);
+                    bit_ct.push('c');
+                }
+            }
+            for (var i = 0; i < bit_inst.length; ++i)
+            {
+                if (i)
+            }
+        }
+    }
+*/
     // Look for super-easy simplifications and make them
     this.cancelRedundantOperations = function()
     {
         var reparallelize = (this.instructions_parallel != null);
         this.clearParallelization();
+        var scratch_bf = new BitField(0, this.qReg.numQubits);
         for (var instIndex = 0; instIndex < this.instructions.length - 1; ++instIndex)
         {
             var curr = this.instructions[instIndex];
@@ -3144,7 +3072,7 @@ function QStaff(qReg, qPanel, pos)
                 for (var bit = 0; bit < this.qReg.numQubits; ++bit)
                 {
                     var done = false;
-                    if (getBit(curr.targetQubits, bit))
+                    if (curr.targetQubits.getBit(bit))
                     {
                         // Now scan forward to see if there's an op we can match with.
                         for (var instIndex2 = instIndex + 1; instIndex2 < this.instructions.length; ++instIndex2)
@@ -3153,22 +3081,22 @@ function QStaff(qReg, qPanel, pos)
                             var is_not2 = (next.op == 'not' || next.op == 'cnot');
                             if (curr.op == next.op)
                             {
-                                if (curr.conditionQubits == next.conditionQubits)
+                                if (bitFieldsAreIdentical(curr.conditionQubits, next.conditionQubits))
                                 {
-                                    if (getBit(next.targetQubits, bit))
+                                    if (next.targetQubits.getBit(bit))
                                     {
-                                        curr.targetQubits &= ~bf_shift(1, bit);
-                                        next.targetQubits &= ~bf_shift(1, bit);
+                                        curr.targetQubits.setBit(bit, 0);
+                                        next.targetQubits.setBit(bit, 0);
                                         break;
                                     }
                                 }
                             }
-                            if (is_not && is_not2 && !getBit(next.conditionQubits, bit))
+                            if (is_not && is_not2 && !next.conditionQubits.getBit(bit))
                             {
                                 // keep going
                             }
-                            else if (getBit(next.targetQubits, bit) || getBit(next.conditionQubits, bit)
-                                    || (next.targetQubits & curr.conditionQubits))
+                            else if (next.targetQubits.getBit(bit) || next.conditionQubits.getBit(bit)
+                                    || next.targetQubits.andIsNotEqualZero(curr.conditionQubits))
                             {
                                 // We're blocked
                                 break;
@@ -3176,7 +3104,7 @@ function QStaff(qReg, qPanel, pos)
                         }
                     }
                 }
-                if (!curr.targetQubits)
+                if (curr.targetQubits.isAllZero())
                     this.removeInstruction(instIndex);
             }
             else if (curr.op == 'not' || curr.op == 'cnot' ||
@@ -3194,7 +3122,7 @@ function QStaff(qReg, qPanel, pos)
                     var next = this.instructions[instIndex2];
                     if (curr.op == next.op)
                     {
-                        if (curr.conditionQubits == next.conditionQubits)
+                        if (bitFieldsAreIdentical(curr.conditionQubits, next.conditionQubits))
                         {
                             if (curr.op == 'phase')
                             {
@@ -3219,7 +3147,7 @@ function QStaff(qReg, qPanel, pos)
                                 }
                             }
                             // If not/exch/hadamard gates have the same conditions, they can cancel or combine.
-                            else if (curr.targetQubits == next.targetQubits)
+                            else if (bitFieldsAreIdentical(curr.targetQubits, next.targetQubits))
                             {
                                 this.removeInstruction(instIndex2);
                                 this.removeInstruction(instIndex);
@@ -3231,7 +3159,9 @@ function QStaff(qReg, qPanel, pos)
                             // If targets aren't the same but they overlap, cancel exchange.
                             else if (is_exchange)
                             {
-                                if (curr.targetQubits & next.targetQubits)
+                                scratch_bf.set(curr.targetQubits);
+                                scratch_bf.andEquals(next.targetQubits);
+                                if (!isAllZero(scratch_bf))
                                     blocked = true;
                             }
                             else
@@ -3245,22 +3175,34 @@ function QStaff(qReg, qPanel, pos)
                         // Otherwise, if targets and conditions overlap at all, we're done
                         else
                         {
-                            if (curr.targetQubits & next.targetQubits)
+                            scratch_bf.set(curr.targetQubits);
+                            scratch_bf.andEquals(next.targetQubits);
+                            if (!isAllZero(scratch_bf))
                                 blocked = true;
-                            if (curr.targetQubits & next.conditionQubits)
+                            scratch_bf.set(curr.targetQubits);
+                            scratch_bf.andEquals(next.conditionQubits);
+                            if (!isAllZero(scratch_bf))
                                 blocked = true;
-                            if (curr.conditionQubits & next.targetQubits)
+                            scratch_bf.set(curr.conditionQubits);
+                            scratch_bf.andEquals(next.targetQubits);
+                            if (!isAllZero(scratch_bf))
                                 blocked = true;
                         }
                     }
                     else
                     {
                         // Otherwise, if targets and conditions overlap at all, we're done
-                        if (curr.targetQubits & next.targetQubits)
+                        scratch_bf.set(curr.targetQubits);
+                        scratch_bf.andEquals(next.targetQubits);
+                        if (!isAllZero(scratch_bf))
                             blocked = true;
-                        if (curr.targetQubits & next.conditionQubits)
+                        scratch_bf.set(curr.targetQubits);
+                        scratch_bf.andEquals(next.conditionQubits);
+                        if (!isAllZero(scratch_bf))
                             blocked = true;
-                        if (curr.conditionQubits & next.targetQubits)
+                        scratch_bf.set(curr.conditionQubits);
+                        scratch_bf.andEquals(next.targetQubits);
+                        if (!isAllZero(scratch_bf))
                             blocked = true;
                     }
                     if (blocked)
@@ -3278,52 +3220,54 @@ function QStaff(qReg, qPanel, pos)
     {
         var reparallelize = (this.instructions_parallel != null);
         this.clearParallelization();
+        var scratch_bf = new BitField(0, this.qReg.numQubits);
         var instIndex = [0, 0, 0];
         var inst = [null, null, null];
         for (instIndex[0] = 0; instIndex[0] < this.instructions.length - 1; ++instIndex[0])
         {
             var curr = inst[0] = this.instructions[instIndex[0]];
             if ((curr.op == 'hadamard' || curr.op == 'chadamard')
-                && !curr.conditionQubits)
+                && curr.conditionQubits.isAllZero())
             {
                 for (var bit = 0; bit < this.qReg.numQubits; ++bit)
                 {
                     var blocked = false;
-                    if (getBit(curr.targetQubits, bit))
+                    if (curr.targetQubits.getBit(bit))
                     {
                         // Now scan forward to see if there's an op we can match with.
                         for (instIndex[1] = instIndex[0] + 1; !blocked && instIndex[1] < this.instructions.length; ++instIndex[1])
                         {
                             inst[1] = this.instructions[instIndex[1]];
                             if ((inst[1].op == 'not' || inst[1].op == 'cnot')
-                                && !inst[1].conditionQubits
-                                && getBit(inst[1].targetQubits, bit))
+                                && inst[1].conditionQubits.isAllZero()
+                                && inst[1].targetQubits.getBit(bit))
                             {
                                 // Now scan forward to see if there's an op we can match with.
                                 for (instIndex[2] = instIndex[1] + 1; !blocked && instIndex[2] < this.instructions.length; ++instIndex[2])
                                 {
                                     inst[2] = this.instructions[instIndex[2]];
                                     if ((inst[2].op == 'hadamard' || inst[2].op == 'chadamard')
-                                        && !inst[2].conditionQubits
-                                        && getBit(inst[2].targetQubits, bit))
+                                        && inst[2].conditionQubits.isAllZero()
+                                        && inst[2].targetQubits.getBit(bit))
                                     {
                                         // We've found the pattern we're looking for.
-                                        sbit = bitfield_one << to_bitfield(bit);
-                                        curr |= sbit;
-                                        inst[1] |= sbit;
-                                        inst[2] |= sbit;
+                                        curr.targetQubits.setBit(bit, 0);
+                                        inst[1].targetQubits.setBit(bit, 0);
+                                        inst[2].targetQubits.setBit(bit, 0);
+                                        scratch_bf.set(0);
+                                        scratch_bf.setBit(bit, 1);
                                         this.insertInstruction(instIndex[0],
-                                            new QInstruction('phase', 0, sbit, 180.0, curr.codeLabel));
+                                            new QInstruction('phase', 0, scratch_bf, 180.0, curr.codeLabel));
                                         break;
                                     }
-                                    else if (getBit(inst[2].targetQubits, bit) || getBit(inst[2].conditionQubits, bit))
+                                    else if (inst[2].targetQubits.getBit(bit) || inst[2].conditionQubits.getBit(bit))
                                     {
                                         blocked = true;
                                         break;
                                     }
                                 }
                             }
-                            else if (getBit(inst[1].targetQubits, bit) || getBit(inst[1].conditionQubits, bit))
+                            else if (inst[1].targetQubits.getBit(bit) || inst[1].conditionQubits.getBit(bit))
                             {
                                 blocked = true;
                                 break;
@@ -3355,13 +3299,13 @@ function QStaff(qReg, qPanel, pos)
             if (is_condition_only_ok)
             {
                 // For gates which can survive with only condition bits
-                if (!(curr.conditionQubits || curr.targetQubits))
+                if (curr.conditionQubits.isAllZero() && curr.targetQubits.isAllZero())
                     delete_this = true;
             }
             else
             {
                 // Gates which need target bits
-                if (!curr.targetQubits)
+                if (curr.targetQubits.isAllZero())
                     delete_this = true;
             }
             if (delete_this)
@@ -3391,21 +3335,23 @@ function QStaff(qReg, qPanel, pos)
         // Reset the insertion point
         this.insertionStart = 0;
         this.parallelize_option = crossLabelBounds;
-//        this.cancelRedundantOperations();
+        this.cancelRedundantOperations();
         // instructions_parallel will just be a 2D array of links to existing instructions
         this.instructions_parallel = new Array();
-        var bfi = bitfield_zero;
-        var bfp = bitfield_zero;
-        var bfprev = bitfield_zero;
+        var bfi = new BitField(0, this.qReg.numQubits);
+        var bfp = new BitField(0, this.qReg.numQubits);
+        var bfprev = new BitField(0, this.qReg.numQubits);
 
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var foundSlot = 0;
             var inst = this.instructions[instIndex];
-            bfi = inst.targetQubits | inst.conditionQubits | inst.auxQubits;
-            bfp = bitfield_zero;
-            var min_bit = getLowestBitIndex(bfi);
-            var max_bit = getHighestBitIndex(bfi);
+            bfi.set(inst.targetQubits);
+            bfi.orEquals(inst.conditionQubits);
+            bfi.orEquals(inst.auxQubits);
+            bfp.set(0);
+            var min_bit = bfi.getLowestBitIndex();
+            var max_bit = bfi.getHighestBitIndex();
 
             for (var parIndex = this.instructions_parallel.length - 1; parIndex >= 0 && foundSlot == 0; --parIndex)
             {
@@ -3413,14 +3359,14 @@ function QStaff(qReg, qPanel, pos)
                 var match_codelabel = true;
                 for (var i = 0; i < parallelSlot.length; ++i)
                 {
-                    bfp |= parallelSlot[i].targetQubits;
-                    bfp |= parallelSlot[i].conditionQubits;
-                    bfp |= parallelSlot[i].auxQubits;
+                    bfp.orEquals(parallelSlot[i].targetQubits);
+                    bfp.orEquals(parallelSlot[i].conditionQubits);
+                    bfp.orEquals(parallelSlot[i].auxQubits);
                     if (inst.codeLabel != parallelSlot[i].codeLabel)
                         match_codelabel = false;
                 }
-                bfp &= bfi;
-                var blocked = (bfp != bitfield_zero);
+                bfp.andEquals(bfi);
+                var blocked = !isAllZero(bfp);
                 if (!match_codelabel && !crossLabelBounds)
                     blocked = true;
                 if (blocked)
@@ -3438,9 +3384,11 @@ function QStaff(qReg, qPanel, pos)
                 // don't offset it at all.
 
                 var prev_inst = this.instructions_parallel[foundSlot][inst.parallel_index_in_slot - 1];
-                bfprev = prev_inst.targetQubits | prev_inst.conditionQubits | prev_inst.auxQubits;
-                var prev_min_bit = getLowestBitIndex(bfprev);
-                var prev_max_bit = getHighestBitIndex(bfprev);
+                bfprev.set(prev_inst.targetQubits);
+                bfprev.orEquals(prev_inst.conditionQubits);
+                bfprev.orEquals(prev_inst.auxQubits);
+                var prev_min_bit = bfprev.getLowestBitIndex();
+                var prev_max_bit = bfprev.getHighestBitIndex();
                 if (min_bit == -1 || prev_min_bit == -1
                     || max_bit < prev_min_bit
                     || min_bit > prev_max_bit)
@@ -3455,23 +3403,28 @@ function QStaff(qReg, qPanel, pos)
 
     this.convertExchangeToCnot = function(only_conditional_exchanges)
     {
-        var targ1_bf = bitfield_zero;
-        var targ2_bf = bitfield_zero;
-        var cond2_bf = bitfield_zero;
+        var targ1_bf = new BitField(0, this.qReg.numQubits);
+        var targ2_bf = new BitField(0, this.qReg.numQubits);
+//        var cond1_bf = new BitField(0, this.qReg.numQubits);
+        var cond2_bf = new BitField(0, this.qReg.numQubits);
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var curr = this.instructions[instIndex];
             var do_this_one = (curr.op == 'exchange');
-            if (do_this_one && only_conditional_exchanges && !curr.conditionQubits)
+            if (do_this_one && only_conditional_exchanges && isAllZero(curr.conditionQubits))
                 do_this_one = false;
             if (do_this_one)
             {
-                var hi_targ = getHighestBitIndex(curr.targetQubits);
-                var lo_targ = getLowestBitIndex(curr.targetQubits);
-                targ1_bf = bitfield_one << to_bitfield(hi_targ);
-                targ2_bf = bitfield_one << to_bitfield(lo_targ);
-                cond2_bf = curr.conditionQubits
-                cond2_bf |= bitfield_one << to_bitfield(hi_targ);
+                var hi_targ = curr.targetQubits.getHighestBitIndex();
+                var lo_targ = curr.targetQubits.getLowestBitIndex();
+                targ1_bf.set(0);
+                targ2_bf.set(0);
+//                cond1_bf.set(curr.conditionQubits)
+                cond2_bf.set(curr.conditionQubits)
+                targ1_bf.setBit(hi_targ, 1);
+                targ2_bf.setBit(lo_targ, 1);
+//                cond1_bf.setBit(lo_targ, 1);
+                cond2_bf.setBit(hi_targ, 1);
                 var new_inst1 = new QInstruction("cnot", targ1_bf, targ2_bf, 0.0, curr.codeLabel);
                 var new_inst2 = new QInstruction("cnot", targ2_bf, cond2_bf, 0.0, curr.codeLabel);
                 var new_inst3 = new QInstruction("cnot", targ1_bf, targ2_bf, 0.0, curr.codeLabel);
@@ -3486,8 +3439,8 @@ function QStaff(qReg, qPanel, pos)
 
     this.convertRootNotToHPhaseH = function(only_conditionals)
     {
-        var targ_bf = bitfield_zero;
-        var cond_bf = bitfield_zero;
+        var targ_bf = new BitField(0, this.qReg.numQubits);
+        var cond_bf = new BitField(0, this.qReg.numQubits);
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var curr = this.instructions[instIndex];
@@ -3497,13 +3450,15 @@ function QStaff(qReg, qPanel, pos)
                                || curr.op == 'crootnot_inv');
             var is_inverse = (curr.op == 'rootnot_inv'
                                || curr.op == 'crootnot_inv');
-            if (do_this_one && only_conditionals && !curr.conditionQubits)
+            if (do_this_one && only_conditionals && isAllZero(curr.conditionQubits))
                 do_this_one = false;
             if (do_this_one)
             {
-                var targ = getHighestBitIndex(curr.targetQubits);
-                cond_bf = curr.conditionQubits | bitfield_one << to_bitfield(targ);
-                targ_bf = bitfield_one << to_bitfield(targ);
+                var targ = curr.targetQubits.getHighestBitIndex();
+                targ_bf.set(0);
+                cond_bf.set(curr.conditionQubits)
+                cond_bf.setBit(targ, 1);
+                targ_bf.setBit(targ, 1);
 
                 var theta = -90;
                 if (is_inverse)
@@ -3522,19 +3477,22 @@ function QStaff(qReg, qPanel, pos)
 
     this.discardUnmeasuredInstructions = function()
     {
-        var measured_bf = bitfield_zero;
+        var measured_bf = NewBitField(0, this.qReg.numQubits);
+        var scratch_bf = NewBitField(0, this.qReg.numQubits);
         var done = false;
         for (var instIndex = this.instructions.length - 1; instIndex >= 0 && !done; --instIndex)
         {
             var curr = this.instructions[instIndex];
             if (curr.op == 'read')
-                measured_bf |= curr.targetQubits;
-            else if (curr.op == 'exchange' && !curr.conditionQubits)
+                measured_bf.orEquals(curr.targetQubits);
+            else if (curr.op == 'exchange' && curr.conditionQubits.isAllZero())
             {
                 // An exchange changes which qubits are on the "measured" list
-                if (countOneBits(curr.targetQubits & measured_bf) == 1)
+                scratch_bf.set(curr.targetQubits);
+                scratch_bf.andEquals(measured_bf);
+                if (scratch_bf.countOneBits == 1)
                 {
-                    measured_bf ^= curr.targetQubits;
+                    measured_bf.xorEquals(curr.targetQubits);
                 }
             }
             else
@@ -3544,7 +3502,9 @@ function QStaff(qReg, qPanel, pos)
                     do_this_one = false;
                 if (do_this_one)
                 {
-                    if (!((curr.targetQubits | curr.conditionQubits) & measured_bf))
+                    scratch_bf.set(curr.targetQubits);
+                    scratch_bf.orEquals(curr.conditionQubits);
+                    if (!scratch_bf.andIsNotEqualZero(measured_bf))
                     {
                         // If none of the qubits are going to be measured, throw it out.
                         this.removeInstruction(instIndex);
@@ -3553,21 +3513,25 @@ function QStaff(qReg, qPanel, pos)
                     {
                         // It *does* contain measured bits.
                         // If there are no conditions, then just strip out target bits
-                        if (!curr.conditionQubits)
+                        if (curr.conditionQubits.isAllZero())
                         {
-                            curr.targetQubits &= measured_bf;
-                            if (!curr.targetQubits)
+                            scratch_bf.set(measured_bf);
+                            curr.targetQubits.andEquals(scratch_bf);
+                            if (curr.targetQubits.isAllZero())
                                 this.removeInstruction(instIndex);
                         }
                         else
                         {
                             // ...so from now on, every bit it touched is considered measured.
-                            measured_bf |= curr.targetQubits;
+                            measured_bf.orEquals(scratch_bf);
                         }
                     }
                 }
             }
         }
+        scratch_bf.recycle();
+        measured_bf.recycle();
+//        this.cancelRedundantOperations();
     }
 
     this.convertCzToCnot = function(max_conditions_to_hit, preferred_target_qubit, min_conditions_to_hit)
@@ -3576,8 +3540,8 @@ function QStaff(qReg, qPanel, pos)
             max_conditions_to_hit = this.qReg.numQubits;
         if (min_conditions_to_hit == null)
             min_conditions_to_hit = 2;
-        var targ_bf = bitfield_zero;
-        var cond_bf = bitfield_zero;
+        var targ_bf = NewBitField(0, this.qReg.numQubits);
+        var cond_bf = NewBitField(0, this.qReg.numQubits);
         var recent_cnot_targ_index = 1;
 //        var ignore_recent_cnot = true;
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
@@ -3585,32 +3549,32 @@ function QStaff(qReg, qPanel, pos)
             var curr = this.instructions[instIndex];
             var do_this_one = (curr.op == 'phase' 
                                 && curr.theta == 180 
-                                && countOneBits(curr.conditionQubits) > 1
-                                && countOneBits(curr.conditionQubits) <= max_conditions_to_hit
-                                && countOneBits(curr.conditionQubits) >= min_conditions_to_hit
+                                && curr.conditionQubits.countOneBits() > 1
+                                && curr.conditionQubits.countOneBits() <= max_conditions_to_hit
+                                && curr.conditionQubits.countOneBits() >= min_conditions_to_hit
                                 );
-            if (curr.op == 'cnot' && curr.conditionQubits)
-                recent_cnot_targ_index = getLowestBitIndex(curr.targetQubits);
+            if (curr.op == 'cnot' && !isAllZero(curr.conditionQubits))
+                recent_cnot_targ_index = curr.targetQubits.getLowestBitIndex();
 
             if (do_this_one)
             {
-                var hi_cond = getHighestBitIndex(curr.conditionQubits);
-                var lo_cond = getLowestBitIndex(curr.conditionQubits);
+                var hi_cond = curr.conditionQubits.getHighestBitIndex();
+                var lo_cond = curr.conditionQubits.getLowestBitIndex();
                 targ_bf.set(0);
                 cond_bf.set(curr.conditionQubits);
-                if (!getBit(curr.conditionQubits, recent_cnot_targ_index))
+                if (!curr.conditionQubits.getBit(recent_cnot_targ_index))
                 {
                     recent_cnot_targ_index = lo_cond;
                 }
                 if (preferred_target_qubit != null)
                 {
-                    if (getBit(curr.conditionQubits, preferred_target_qubit))
+                    if (curr.conditionQubits.getBit(preferred_target_qubit))
                     {
                         recent_cnot_targ_index = preferred_target_qubit;
                     }
                 }
-                targ_bf |= bitfield_one << to_bitfield(recent_cnot_targ_index);
-                cond_bf |= bitfield_one << to_bitfield(recent_cnot_targ_index);
+                targ_bf.setBit(recent_cnot_targ_index, 1);
+                cond_bf.setBit(recent_cnot_targ_index, 0);
                 var new_inst1 = new QInstruction("hadamard", targ_bf, 0, 0.0, curr.codeLabel);
                 var new_inst2 = new QInstruction("cnot", targ_bf, cond_bf, 0.0, curr.codeLabel);
                 var new_inst3 = new QInstruction("hadamard", targ_bf, 0, 0.0, curr.codeLabel);
@@ -3620,28 +3584,33 @@ function QStaff(qReg, qPanel, pos)
                 this.insertInstruction(instIndex, new_inst3);
             }
         }
+        targ_bf.recycle();
+        cond_bf.recycle();
+//        this.cancelRedundantOperations();
     }
 
     this.convertCnotToCz = function(max_conditions_to_hit, preferred_target_qubit)
     {
         if (max_conditions_to_hit == null)
             max_conditions_to_hit = this.qReg.numQubits;
-        var targ_bf = bitfield_zero;
-        var cond_bf = bitfield_zero;
+        var targ_bf = NewBitField(0, this.qReg.numQubits);
+        var cond_bf = NewBitField(0, this.qReg.numQubits);
         var recent_cnot_targ_index = 1;
+//        var ignore_recent_cnot = true;
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var curr = this.instructions[instIndex];
             var do_this_one = (curr.op == 'not' || curr.op == 'cnot' 
-                                && countOneBits(curr.conditionQubits) >= 1
-                                && countOneBits(curr.conditionQubits) <= max_conditions_to_hit);
+                                && curr.conditionQubits.countOneBits() >= 1
+                                && curr.conditionQubits.countOneBits() <= max_conditions_to_hit);
 
             if (do_this_one)
             {
-                var hi_targ = getHighestBitIndex(curr.targetQubits);
-                var lo_targ = getLowestBitIndex(curr.targetQubits);
-                targ_bf = curr.targetQubits;
-                cond_bf = curr.conditionQubits | curr.targetQubits;
+                var hi_targ = curr.targetQubits.getHighestBitIndex();
+                var lo_targ = curr.targetQubits.getLowestBitIndex();
+                targ_bf.set(curr.targetQubits);
+                cond_bf.set(curr.conditionQubits);
+                cond_bf.orEquals(curr.targetQubits);
                 var new_inst1 = new QInstruction("hadamard", targ_bf, 0, 0.0, curr.codeLabel);
                 var new_inst2 = new QInstruction("phase", 0, cond_bf, 180.0, curr.codeLabel);
                 var new_inst3 = new QInstruction("hadamard", targ_bf, 0, 0.0, curr.codeLabel);
@@ -3651,35 +3620,37 @@ function QStaff(qReg, qPanel, pos)
                 this.insertInstruction(instIndex, new_inst3);
             }
         }
+        targ_bf.recycle();
+        cond_bf.recycle();
     }
 
     this.convertCPhaseToCnot = function()
     {
-        var targ_bf = bitfield_zero;
-        var cond_bf = bitfield_zero;
+        var targ_bf = NewBitField(0, this.qReg.numQubits);
+        var cond_bf = NewBitField(0, this.qReg.numQubits);
         var recent_cnot_targ_index = 2;
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var curr = this.instructions[instIndex];
             var do_this_one = (curr.op == 'phase' 
                                 && curr.theta != 180 
-                                && countOneBits(curr.conditionQubits) == 2);
-            if (curr.op == 'cnot' && curr.conditionQubits)
-                recent_cnot_targ_index = getLowestBitIndex(curr.targetQubits);
+                                && curr.conditionQubits.countOneBits() == 2);
+            if (curr.op == 'cnot' && !isAllZero(curr.conditionQubits))
+                recent_cnot_targ_index = curr.targetQubits.getLowestBitIndex();
 
             if (do_this_one)
             {
                 var half_theta = 0.5 * curr.theta;
-                var hi_cond = getHighestBitIndex(curr.conditionQubits);
-                var lo_cond = getLowestBitIndex(curr.conditionQubits);
+                var hi_cond = curr.conditionQubits.getHighestBitIndex();
+                var lo_cond = curr.conditionQubits.getLowestBitIndex();
                 targ_bf.set(0);
                 cond_bf.set(curr.conditionQubits);
-                if (!getBit(curr.conditionQubits, recent_cnot_targ_index))
+                if (!curr.conditionQubits.getBit(recent_cnot_targ_index))
                 {
                     recent_cnot_targ_index = lo_cond;
                 }
-                targ_bf |= bitfield_one << to_bitfield(recent_cnot_targ_index);
-                cond_bf &= ~(bitfield_one << to_bitfield(recent_cnot_targ_index));
+                targ_bf.setBit(recent_cnot_targ_index, 1);
+                cond_bf.setBit(recent_cnot_targ_index, 0);
                 var new_inst = [];
                 new_inst.push(new QInstruction("phase", 0, targ_bf, half_theta, curr.codeLabel));
                 new_inst.push(new QInstruction("phase", 0, cond_bf, half_theta, curr.codeLabel));
@@ -3691,30 +3662,36 @@ function QStaff(qReg, qPanel, pos)
                     this.insertInstruction(instIndex, new_inst[i]);
             }
         }
+        targ_bf.recycle();
+        cond_bf.recycle();
+//        this.cancelRedundantOperations();
     }
 
     this.expandToffoliGates = function(use_expanded_exchange)
     {
         var do_cnot_all_same_qubit = false;
-        var targ_bf  = bitfield_zero;
-        var cond1_bf = bitfield_zero;
-        var cond2_bf = bitfield_zero;
-        var swap_bf  = bitfield_zero;
+        var targ_bf  = NewBitField(0, this.qReg.numQubits);
+        var cond1_bf = NewBitField(0, this.qReg.numQubits);
+        var cond2_bf = NewBitField(0, this.qReg.numQubits);
+        var swap_bf  = NewBitField(0, this.qReg.numQubits);
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
         {
             var curr = this.instructions[instIndex];
             var do_this_one = (curr.op == 'cnot'
-                                && countOneBits(curr.conditionQubits) == 2
-                                && countOneBits(curr.targetQubits) == 1);
+                                && curr.conditionQubits.countOneBits() == 2
+                                && curr.targetQubits.countOneBits() == 1);
 
             if (do_this_one)
             {
-                var hi_cond = getHighestBitIndex(curr.conditionQubits);
-                var lo_cond = getLowestBitIndex(curr.conditionQubits);
+                var hi_cond = curr.conditionQubits.getHighestBitIndex();
+                var lo_cond = curr.conditionQubits.getLowestBitIndex();
                 targ_bf.set(curr.targetQubits);
-                cond1_bf = bitfield_one << to_bitfield(lo_cond);
-                cond2_bf = bitfield_one << to_bitfield(hi_cond);
-                swap_bf = targ_bf | (bitfield_one << to_bitfield(hi_cond));
+                cond1_bf.set(0);
+                cond2_bf.set(0);
+                cond1_bf.setBit(lo_cond, 1);
+                cond2_bf.setBit(hi_cond, 1);
+                swap_bf.set(targ_bf);
+                swap_bf.setBit(hi_cond, 1);
                 var new_inst = [];
                 new_inst.push(new QInstruction("hadamard", targ_bf, 0, 0.0, curr.codeLabel));
                 new_inst.push(new QInstruction("cnot",     targ_bf, cond2_bf, 0.0, curr.codeLabel));
@@ -3780,8 +3757,84 @@ function QStaff(qReg, qPanel, pos)
                     this.insertInstruction(instIndex, new_inst[i]);
             }
         }
+        targ_bf.recycle();
+        cond1_bf.recycle();
+        cond2_bf.recycle();
+        swap_bf.recycle();
+//        this.cancelRedundantOperations();
     }
 
+    this.convertToBeamSplitters = function()
+    {
+        var only_conditional_exchanges = true;
+        this.clearParallelization();
+        var targ1_bf = new BitField(0, this.qReg.numQubits);
+        var targ2_bf = new BitField(0, this.qReg.numQubits);
+//        var cond1_bf = new BitField(0, this.qReg.numQubits);
+        var cond2_bf = new BitField(0, this.qReg.numQubits);
+        var split2_bf = new BitField(0, this.qReg.numQubits);
+        var split3_bf = new BitField(0, this.qReg.numQubits);
+        for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
+        {
+            var curr = this.instructions[instIndex];
+            var do_this_one = (curr.op == 'exchange'
+                            || curr.op == 'rootexchange'
+                            || curr.op == 'rootexchange_inv'
+                            );
+            if (do_this_one && only_conditional_exchanges && isAllZero(curr.conditionQubits))
+                do_this_one = false;
+            if (do_this_one)
+            {
+                var cond = curr.conditionQubits.getHighestBitIndex();
+                var hi_targ = curr.targetQubits.getHighestBitIndex();
+                var lo_targ = curr.targetQubits.getLowestBitIndex();
+                targ1_bf.set(0);
+                targ2_bf.set(0);
+//                cond1_bf.set(curr.conditionQubits)
+                cond2_bf.set(curr.conditionQubits);
+                targ1_bf.setBit(hi_targ, 1);
+                targ2_bf.setBit(lo_targ, 1);
+//                cond1_bf.setBit(lo_targ, 1);
+                cond2_bf.setBit(hi_targ, 1);
+                var reflectivity = 0.5;
+
+                this.removeInstruction(instIndex);
+
+                this.insertInstruction(instIndex, new QInstruction("beamsplitter", curr.targetQubits, null, reflectivity, curr.codeLabel));
+
+                var utility_bit;
+
+                utility_bit = this.qReg.findClosestUtilityBit(cond+1);
+                split2_bf.set(0);
+                split2_bf.setBit(cond+1, 1);
+                if (utility_bit >= 0)
+                    split2_bf.setBit(utility_bit, 1);
+                this.insertInstruction(instIndex, new QInstruction("beamsplitter", split2_bf, null, reflectivity, curr.codeLabel));
+
+                split2_bf.set(0);
+                split2_bf.setBit(cond, 1);
+                split2_bf.setBit(hi_targ, 1);
+                this.insertInstruction(instIndex, new QInstruction("beamsplitter", split2_bf, null, reflectivity, curr.codeLabel));
+
+                utility_bit = this.qReg.findClosestUtilityBit(lo_targ);
+                split2_bf.set(0);
+                split2_bf.setBit(lo_targ, 1);
+                if (utility_bit >= 0)
+                    split2_bf.setBit(utility_bit, 1);
+                this.insertInstruction(instIndex, new QInstruction("beamsplitter", split2_bf, null, reflectivity, curr.codeLabel));
+
+                this.insertInstruction(instIndex, new QInstruction("beamsplitter", curr.targetQubits, null, reflectivity, curr.codeLabel));
+
+//                var new_inst3 = new QInstruction("beamsplitter", curr.targetQubits, null, reflectivity, curr.codeLabel);
+
+//                var new_inst1 = new QInstruction("beamsplitter", targ1_bf, targ2_bf, reflectivity, curr.codeLabel);
+//                var new_inst1 = new QInstruction("beamsplitter", targ1_bf, targ2_bf, reflectivity, curr.codeLabel);
+//                var new_inst2 = new QInstruction("cnot", targ2_bf, cond2_bf, 0.0, curr.codeLabel);
+//                var new_inst3 = new QInstruction("cnot", targ1_bf, targ2_bf, 0.0, curr.codeLabel);
+            }
+        }
+        this.cancelRedundantOperations();
+    }
 
     this.convertGatesToOneTargetQubit = function()
     {
@@ -3797,17 +3850,19 @@ function QStaff(qReg, qPanel, pos)
                 if (curr.op == 'cnot' || curr.op == 'not')  // TODO: Which other instructions?
                 {
                     // For multi-target ops, break them into single-target ops.
-                    if (countOneBits(curr.targetQubits) > 1)
+                    if (curr.targetQubits.countOneBits() > 1)
                     {
                         did_something = true;
                         this.removeInstruction(instIndex);
-                        var low = getLowestBitIndex(curr.targetQubits);
-                        var high = getHighestBitIndex(curr.targetQubits);
+                        var low = curr.targetQubits.getLowestBitIndex();
+                        var high = curr.targetQubits.getHighestBitIndex();
                         for (var bit = low; bit <= high; ++bit)
                         {
-                            if (getBit(curr.targetQubits, bit))
+                            if (curr.targetQubits.getBit(bit))
                             {
-                                var new_targ = bitfield_one << to_bitfield(bit);
+                                var new_targ = new BitField(curr.targetQubits);
+                                new_targ.set(0);
+                                new_targ.setBit(bit, 1);
                                 var new_inst = new QInstruction(curr.op, new_targ, curr.conditionQubits, 0.0, curr.codeLabel);
                                 this.insertInstruction(instIndex, new_inst);
                             }
@@ -3836,16 +3891,18 @@ function QStaff(qReg, qPanel, pos)
                     curr.op == 'exchange' || curr.op == 'cexchange')  // TODO: What other instructions?
                 {
                     // For multi-target ops, break them into single-target ops.
-                    if (countOneBits(curr.conditionQubits) > 1)
+                    if (curr.conditionQubits.countOneBits() > 1)
                     {
                         did_something = true;
                         this.removeInstruction(instIndex);
-                        var low = getLowestBitIndex(curr.conditionQubits);
-                        var high = getHighestBitIndex(curr.conditionQubits);
-                        var cond_minus_one = curr.conditionQubits;
+                        var low = curr.conditionQubits.getLowestBitIndex();
+                        var high = curr.conditionQubits.getHighestBitIndex();
+                        var cond_minus_one = new BitField(curr.conditionQubits);
+                        var cond_one = new BitField(curr.conditionQubits);
                         var targ = curr.targetQubits;
-                        var cond_one = bitfield_one << to_bitfield(high);
-                        cond_minus_one &= this.qReg.allBitsMask & ~cond_one;
+                        cond_one.set(0);
+                        cond_one.setBit(high, 1);
+                        cond_minus_one.setBit(high, 0);
 
                         v_op = 'crootnot';
                         vt_op = 'crootnot_inv';
@@ -3872,10 +3929,10 @@ function QStaff(qReg, qPanel, pos)
     {
 //        this.convertExchangeToCnot(true);    // only convert conditional exchanges
         this.convertGatesToOneTargetQubit();
-        var bfi = bitfield_zero;
-        var bfs = bitfield_zero;
-        var bf_primary = bitfield_zero;
-        var bf_secondary = bitfield_zero;
+        var bfi = new BitField(0, this.qReg.numQubits);
+        var bfs = new BitField(0, this.qReg.numQubits);
+        var bf_primary = new BitField(0, this.qReg.numQubits);
+        var bf_secondary = new BitField(0, this.qReg.numQubits);
 
         // Implements Seciotn 7.3 in Elementary Quantum Gates
         var did_something = true;
@@ -3888,42 +3945,45 @@ function QStaff(qReg, qPanel, pos)
                 if (curr.op == 'cnot' || curr.op == 'not' || curr.op == 'exchange')  // TODO: What other instructions?
                 {
                     // Turn 3+ condition gates into Toffolis.
-                    var num_condition_bits = countOneBits(curr.conditionQubits);
+                    var num_condition_bits = curr.conditionQubits.countOneBits();
                     var targ = curr.targetQubits;
                     if (num_condition_bits > 2)
                     {
-                        bfi = curr.targetQubits | curr.conditionQubits;
+                        bfi.set(curr.targetQubits);
+                        bfi.orEquals(curr.conditionQubits);
                         // Find a temp-bit
-                        var bfi_low = getLowestBitIndex(bfi);
-                        var bfi_high = getHighestBitIndex(bfi);
+                        var bfi_low = bfi.getLowestBitIndex();
+                        var bfi_high = bfi.getHighestBitIndex();
                         var scratch_bit = bfi_low - 1;
                         if (bfi_low == 0)
                         {
                             scratch_bit = 1;
-                            while (getBit(bfi, scratch_bit))
+                            while (bfi.getBit(scratch_bit))
                                 scratch_bit++;
                         }
                         // If there's an available scratch bit, proceed.
                         if (scratch_bit < this.qReg.numQubits)
                         {
                             did_something = true;
-                            bfs = bitfield_one << to_bitfield(scratch_bit);
+                            bfs.set(0);
+                            bfs.setBit(scratch_bit, 1);
                             var num_primary_conditions = num_condition_bits >>> 1;
-                            bfs_primary = bitfield_one << to_bitfield(scratch_bit);
-                            bf_secondary = bitfield_zero;
+                            bf_primary.set(0);
+                            bf_primary.setBit(scratch_bit, 1);
+                            bf_secondary.set(0);
                             var primary_count = 0;
                             for (var bit = bfi_low; bit <= bfi_high; ++bit)
                             {
-                                if (getBit(curr.conditionQubits, bit))
+                                if (curr.conditionQubits.getBit(bit))
                                 {
                                     if (primary_count < num_primary_conditions)
                                     {
-                                        bf_primary |= bitfield_one << to_bitfield(bit);
+                                        bf_primary.setBit(bit, 1);
                                         primary_count++;
                                     }
                                     else
                                     {
-                                        bf_secondary |= bitfield_one << to_bitfield(bit);
+                                        bf_secondary.setBit(bit, 1);
                                     }
                                 }
                             }
@@ -3942,9 +4002,9 @@ function QStaff(qReg, qPanel, pos)
 
     this.moveCnotTargets = function(dest_index, dontUnTwistAtEnd)
     {
-        var exchangeBits = bitfield_zero;
-        var exchangeBitsC = bitfield_zero;
-        var exchangeBitsT = bitfield_zero;
+        var exchangeBits = new BitField(0, this.qReg.numQubits);
+        var exchangeBitsC = new BitField(0, this.qReg.numQubits);
+        var exchangeBitsT = new BitField(0, this.qReg.numQubits);
         var swapper = new BitSwapper(this.qReg.numQubits);
         var use_exchange_instr = false;
 
@@ -3957,11 +4017,11 @@ function QStaff(qReg, qPanel, pos)
             // Whatever the instruction is (if there are conditions or it's an exchange), collect all of the
             // bits together.
             if (curr.op == 'cnot' 
-                && (countOneBits(curr.targetQubits) == 1) 
-                && curr.conditionQubits)
+                && (curr.targetQubits.countOneBits() == 1) 
+                && !isAllZero(curr.conditionQubits))
             {
-                var targ = getLowestBitIndex(curr.targetQubits);
-                var bit = getLowestBitIndex(curr.targetQubits);
+                var targ = curr.targetQubits.getLowestBitIndex();
+                var bit = curr.targetQubits.getLowestBitIndex();
                 while (bit != dest_index)
                 {
                     var max_step = 0;
@@ -3975,17 +4035,22 @@ function QStaff(qReg, qPanel, pos)
                     }
                     if (use_exchange_instr || first_cnot)
                     {
-                        exchangeBits = bitfield_one << to_bitfield(bit);
-                        exchangeBits |= bitfield_one << to_bitfield(bit + step);
+                        exchangeBits.set(0);
+                        exchangeBits.setBit(bit, 1);
+                        exchangeBits.setBit(bit + step, 1);
                         this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                         instIndex++;
                     }
                     else
                     {
                         // exhange made from Hadamard and CNOT
-                        exchangeBitsC = bitfield_one << to_bitfield(bit);
-                        exchangeBitsT = bitfield_one << to_bitfield(bit + step);
-                        exchangeBits = exchangeBitsC | exchangeBitsT;
+                        exchangeBits.set(0);
+                        exchangeBitsC.set(0);
+                        exchangeBitsT.set(0);
+                        exchangeBits.setBit(bit, 1);
+                        exchangeBits.setBit(bit + step, 1);
+                        exchangeBitsC.setBit(bit, 1);
+                        exchangeBitsT.setBit(bit + step, 1);
                         this.insertInstruction(instIndex, new QInstruction('cnot', exchangeBitsT, exchangeBitsC, 0.0, curr.codeLabel));
                         this.insertInstruction(instIndex, new QInstruction('hadamard', exchangeBits, 0, 0.0, curr.codeLabel));
                         this.insertInstruction(instIndex, new QInstruction('cnot', exchangeBitsT, exchangeBitsC, 0.0, curr.codeLabel));
@@ -4011,8 +4076,9 @@ function QStaff(qReg, qPanel, pos)
                         sb2++;
                     while (sb2 > sb)
                     {
-                        exchangeBits = bitfield_one << to_bitfield(sb2);
-                        exchangeBits |= bitfield_one << to_bitfield(sb2 - 1);
+                        exchangeBits.set(0);
+                        exchangeBits.setBit(sb2, 1);
+                        exchangeBits.setBit(sb2 - 1, 1);
                         this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, 'swap restore'));
                         swapper.swap(sb2, sb2 - 1);
                         instIndex++;
@@ -4027,8 +4093,8 @@ function QStaff(qReg, qPanel, pos)
     // Add (LOTS of) exchange instructions to make qubits adjacent to one another.
     this.migrateAdjacent1D = function(collectTargets, dontUnTwistAtEnd)
     {
-        var allInstBits = bitfield_zero;
-        var exchangeBits = bitfield_zero;
+        var allInstBits = new BitField(0, this.qReg.numQubits);
+        var exchangeBits = new BitField(0, this.qReg.numQubits);
         var swapper = new BitSwapper(this.qReg.numQubits);
 
         for (var instIndex = 0; instIndex < this.instructions.length; ++instIndex)
@@ -4043,21 +4109,22 @@ function QStaff(qReg, qPanel, pos)
                 || curr.op == 'pair_source'
                 || curr.op == 'rootexchange'
                 || curr.op == 'rootexchange_inv'
-                || curr.conditionQubits)
+                || !isAllZero(curr.conditionQubits))
             {
-                allInstBits = curr.targetQubits | curr.conditionQubits;
-                var count = countOneBits(allInstBits);
+                allInstBits.set(curr.targetQubits);
+                allInstBits.orEquals(curr.conditionQubits);
+                var count = allInstBits.countOneBits();
                 if (count > 1)
                 {
-                    var low = getLowestBitIndex(allInstBits);
-                    var high = getHighestBitIndex(allInstBits);
+                    var low = allInstBits.getLowestBitIndex();
+                    var high = allInstBits.getHighestBitIndex();
                     while (high - low > count - 1)
                     {
                         var center = 0;
                         var inv_count = 0;
                         for (var i = low; i <= high; ++i)
                         {
-                            if (!getBit(allInstBits, i))
+                            if (!allInstBits.getBit(i))
                             {
                                 center += i;
                                 inv_count++;
@@ -4066,50 +4133,54 @@ function QStaff(qReg, qPanel, pos)
                         center = 0| (center / inv_count);
                         for (bit = center; bit < high; ++bit)
                         {
-                            if (!getBit(allInstBits, bit)
-                                && getBit(allInstBits, bit + 1))
+                            if (!allInstBits.getBit(bit)
+                                && allInstBits.getBit(bit + 1))
                             {
-                                exchangeBits = bitfield_one << to_bitfield(bit);
-                                exchangeBits |= bitfield_one << to_bitfield(bit + 1);
+                                exchangeBits.set(0);
+                                exchangeBits.setBit(bit, 1);
+                                exchangeBits.setBit(bit + 1, 1);
                                 this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                 swapper.swap(bit, bit + 1, curr);
                                 instIndex++;
 
-                                allInstBits = curr.targetQubits | curr.conditionQubits;
-                                low = getLowestBitIndex(allInstBits);
-                                high = getHighestBitIndex(allInstBits);
+                                allInstBits.set(curr.targetQubits);
+                                allInstBits.orEquals(curr.conditionQubits);
+                                low = allInstBits.getLowestBitIndex();
+                                high = allInstBits.getHighestBitIndex();
                             }
                         }
                         for (bit = center; bit > low; --bit)
                         {
-                            if (!getBit(allInstBits, bit)
-                                && getBit(allInstBits, bit - 1))
+                            if (!allInstBits.getBit(bit)
+                                && allInstBits.getBit(bit - 1))
                             {
-                                exchangeBits = bitfield_one << to_bitfield(bit);
-                                exchangeBits |= bitfield_one << to_bitfield(bit - 1);
+                                exchangeBits.set(0);
+                                exchangeBits.setBit(bit, 1);
+                                exchangeBits.setBit(bit - 1, 1);
                                 this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                 swapper.swap(bit, bit - 1, curr);
                                 instIndex++;
 
-                                allInstBits = curr.targetQubits | curr.conditionQubits;
-                                low = getLowestBitIndex(allInstBits);
-                                high = getHighestBitIndex(allInstBits);
+                                allInstBits.set(curr.targetQubits);
+                                allInstBits.orEquals(curr.conditionQubits);
+                                low = allInstBits.getLowestBitIndex();
+                                high = allInstBits.getHighestBitIndex();
                             }
                         }
                     }
                     if  (collectTargets)
                     {
-                        allInstBits = curr.targetQubits;
-                        count = countOneBits(allInstBits);
-                        var low = getLowestBitIndex(allInstBits);
-                        var high = getHighestBitIndex(allInstBits);
+                        allInstBits.set(curr.targetQubits);
+                        count = allInstBits.countOneBits();
+                        var low = allInstBits.getLowestBitIndex();
+                        var high = allInstBits.getHighestBitIndex();
                         while (high - low > count - 1)
                         {
                             var center = 0;
                             var inv_count = 0;
                             for (var i = low; i <= high; ++i)
                             {
-                                if (!getBit(allInstBits, i))
+                                if (!allInstBits.getBit(i))
                                 {
                                     center += i;
                                     inv_count++;
@@ -4118,34 +4189,36 @@ function QStaff(qReg, qPanel, pos)
                             center = 0| (center / inv_count);
                             for (bit = center; bit < high; ++bit)
                             {
-                                if (!getBit(allInstBits, bit)
-                                    && getBit(allInstBits, bit + 1))
+                                if (!allInstBits.getBit(bit)
+                                    && allInstBits.getBit(bit + 1))
                                 {
-                                    exchangeBits = bitfield_one << to_bitfield(bit);
-                                    exchangeBits |= bitfield_one << to_bitfield(bit + 1);
+                                    exchangeBits.set(0);
+                                    exchangeBits.setBit(bit, 1);
+                                    exchangeBits.setBit(bit + 1, 1);
                                     this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                     swapper.swap(bit, bit + 1, curr);
                                     instIndex++;
 
-                                    allInstBits = curr.targetQubits;
-                                    low = getLowestBitIndex(allInstBits);
-                                    high = getHighestBitIndex(allInstBits);
+                                    allInstBits.set(curr.targetQubits);
+                                    low = allInstBits.getLowestBitIndex();
+                                    high = allInstBits.getHighestBitIndex();
                                 }
                             }
                             for (bit = center; bit > low; --bit)
                             {
-                                if (!getBit(allInstBits, bit)
-                                    && getBit(allInstBits, bit - 1))
+                                if (!allInstBits.getBit(bit)
+                                    && allInstBits.getBit(bit - 1))
                                 {
-                                    exchangeBits = bitfield_one << to_bitfield(bit);
-                                    exchangeBits |= bitfield_one << to_bitfield(bit - 1);
+                                    exchangeBits.set(0);
+                                    exchangeBits.setBit(bit, 1);
+                                    exchangeBits.setBit(bit - 1, 1);
                                     this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                     swapper.swap(bit, bit - 1, curr);
                                     instIndex++;
 
-                                    allInstBits = curr.targetQubits;
-                                    low = getLowestBitIndex(allInstBits);
-                                    high = getHighestBitIndex(allInstBits);
+                                    allInstBits.set(curr.targetQubits);
+                                    low = allInstBits.getLowestBitIndex();
+                                    high = allInstBits.getHighestBitIndex();
                                 }
                             }
                         }
@@ -4165,8 +4238,9 @@ function QStaff(qReg, qPanel, pos)
                         sb2++;
                     while (sb2 > sb)
                     {
-                        exchangeBits = bitfield_one << to_bitfield(sb2);
-                        exchangeBits |= bitfield_one << to_bitfield(sb2 - 1);
+                        exchangeBits.set(0);
+                        exchangeBits.setBit(sb2, 1);
+                        exchangeBits.setBit(sb2 - 1, 1);
                         this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, 'swap restore'));
                         swapper.swap(sb2, sb2 - 1);
                         instIndex++;
@@ -4194,16 +4268,16 @@ function QStaff(qReg, qPanel, pos)
             // Whatever the instruction is (if there are conditions or it's an exchange), collect all of the
             // bits together.
             if (curr.op == 'exchange' || curr.op == 'rootexchange' || curr.op == 'rootexchange_inv'
-                || !curr.conditionQubits)
+                || !isAllZero(curr.conditionQubits))
             {
-                var cond_count = countOneBits(curr.conditionQubits);
-                var targ_count = countOneBits(curr.targetQubits);
+                var cond_count = curr.conditionQubits.countOneBits();
+                var targ_count = curr.targetQubits.countOneBits();
                 // Special common case: 2 targets, 0 or 1 condition (c-exchange)
                 if (cond_count <= 1 && targ_count == 2)
                 {
-                    var cond = getLowestBitIndex(curr.conditionQubits);
-                    var targ_high = getHighestBitIndex(curr.targetQubits);
-                    var targ_low = getLowestBitIndex(curr.targetQubits);
+                    var cond = curr.conditionQubits.getLowestBitIndex();
+                    var targ_high = curr.targetQubits.getHighestBitIndex();
+                    var targ_low = curr.targetQubits.getLowestBitIndex();
                     if (targ_high == targ_low + 1 &&
                         (cond == -1 || cond == targ_low - 1 || cond == targ_high + 1))
                     {
@@ -4223,11 +4297,11 @@ function QStaff(qReg, qPanel, pos)
                             var whatif_cond = -1;
                             // TODO: cost should be zero if it's apre-twist (bits not yet used)
                             var cost = 0;
-                            if (getBit(used_bits, swapper.table[whatif_targ_high]) ||
-                                    getBit(used_bits, swapper.table[targ_high]))
+                            if (used_bits.getBit(swapper.table[whatif_targ_high]) ||
+                                    used_bits.getBit(swapper.table[targ_high]))
                                 cost += Math.abs(whatif_targ_high - targ_high);
-                            if (getBit(used_bits, swapper.table[whatif_targ_low]) ||
-                                    getBit(used_bits, swapper.table[targ_low]))
+                            if (used_bits.getBit(swapper.table[whatif_targ_low]) ||
+                                    used_bits.getBit(swapper.table[targ_low]))
                                 cost += Math.abs(whatif_targ_low - targ_low);
                             if (cond_count)
                             {
@@ -4238,15 +4312,15 @@ function QStaff(qReg, qPanel, pos)
                                 if (c1 >= 0)
                                 {
                                     cost1 = Math.abs(c1 - cond);
-                                    if (!getBit(used_bits, swapper.table[c1]) &&
-                                        !getBit(used_bits, swapper.table[cond]))
+                                    if (!used_bits.getBit(swapper.table[c1]) &&
+                                        !used_bits.getBit(swapper.table[cond]))
                                             cost1 = 0;
                                 }
                                 if (c2 < qReg.numQubits)
                                 {
                                     cost2 = Math.abs(c2 - cond);
-                                    if (!getBit(used_bits, swapper.table[c2]) &&
-                                        !getBit(used_bits, swapper.table[cond]))
+                                    if (!used_bits.getBit(swapper.table[c2]) &&
+                                        !used_bits.getBit(swapper.table[cond]))
                                             cost2 = 0;
                                 }
 
@@ -4277,34 +4351,35 @@ function QStaff(qReg, qPanel, pos)
                         var move_done = false;
                         while (!move_done)
                         {
-                            cond = getLowestBitIndex(curr.conditionQubits);
-                            targ_high = getHighestBitIndex(curr.targetQubits);
-                            targ_low = getLowestBitIndex(curr.targetQubits);
+                            cond = curr.conditionQubits.getLowestBitIndex();
+                            targ_high = curr.targetQubits.getHighestBitIndex();
+                            targ_low = curr.targetQubits.getLowestBitIndex();
                             if (targ_high != best_th)
                             {
                                 var bit = targ_high;
                                 var dest = best_th;
                                 var dir = (dest > bit) ? 1 : -1;
-                                if (!getBit(used_bits, swapper.table[bit]) &&
-                                    !getBit(used_bits, swapper.table[dest]))
+                                if (!used_bits.getBit(swapper.table[bit]) &&
+                                    !used_bits.getBit(swapper.table[dest]))
                                 {
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[bit]);
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[dest]);
+                                    used_bits.setBit(swapper.table[bit], 1);
+                                    used_bits.setBit(swapper.table[dest], 1);
                                     swapper.swap(bit, dest, curr);
                                     bit = dest;
                                 }
                                 while (bit != dest)
                                 {
-                                    exchangeBits = bitfield_one << to_bitfield(bit);
-                                    exchangeBits |= bitfield_one << to_bitfield(bit + dir);
+                                    exchangeBits.set(0);
+                                    exchangeBits.setBit(bit, 1);
+                                    exchangeBits.setBit(bit + dir, 1);
                                     this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                     swapper.swap(bit, bit + dir, curr);
                                     instIndex++;
                                     bit += dir;
                                 }
-                                cond = getLowestBitIndex(curr.conditionQubits);
-                                targ_high = getHighestBitIndex(curr.targetQubits);
-                                targ_low = getLowestBitIndex(curr.targetQubits);
+                                cond = curr.conditionQubits.getLowestBitIndex();
+                                targ_high = curr.targetQubits.getHighestBitIndex();
+                                targ_low = curr.targetQubits.getLowestBitIndex();
                                 continue;
                             }
                             if (targ_low != best_tl)
@@ -4312,26 +4387,27 @@ function QStaff(qReg, qPanel, pos)
                                 var bit = targ_low;
                                 var dest = best_tl;
                                 var dir = (dest > bit) ? 1 : -1;
-                                if (!getBit(used_bits, swapper.table[bit]) &&
-                                    !getBit(used_bits, swapper.table[dest]))
+                                if (!used_bits.getBit(swapper.table[bit]) &&
+                                    !used_bits.getBit(swapper.table[dest]))
                                 {
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[bit]);
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[dest]);
+                                    used_bits.setBit(swapper.table[bit], 1);
+                                    used_bits.setBit(swapper.table[dest], 1);
                                     swapper.swap(bit, dest, curr);
                                     bit = dest;
                                 }
                                 while (bit != dest)
                                 {
-                                    exchangeBits = bitfield_one << to_bitfield(bit);
-                                    exchangeBits |= bitfield_one << to_bitfield(bit + dir);
+                                    exchangeBits.set(0);
+                                    exchangeBits.setBit(bit, 1);
+                                    exchangeBits.setBit(bit + dir, 1);
                                     this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                     swapper.swap(bit, bit + dir, curr);
                                     instIndex++;
                                     bit += dir;
                                 }
-                                cond = getLowestBitIndex(curr.conditionQubits);
-                                targ_high = getHighestBitIndex(curr.targetQubits);
-                                targ_low = getLowestBitIndex(curr.targetQubits);
+                                cond = curr.conditionQubits.getLowestBitIndex();
+                                targ_high = curr.targetQubits.getHighestBitIndex();
+                                targ_low = curr.targetQubits.getLowestBitIndex();
                                 continue;
                             }
                             if (cond_count && cond != best_c)
@@ -4339,26 +4415,27 @@ function QStaff(qReg, qPanel, pos)
                                 var bit = cond;
                                 var dest = best_c;
                                 var dir = (dest > bit) ? 1 : -1;
-                                if (!getBit(used_bits, swapper.table[bit]) &&
-                                    !getBit(used_bits, swapper.table[dest]))
+                                if (!used_bits.getBit(swapper.table[bit]) &&
+                                    !used_bits.getBit(swapper.table[dest]))
                                 {
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[bit]);
-                                    used_bits |= bitfield_one << to_bitfield(swapper.table[dest]);
+                                    used_bits.setBit(swapper.table[bit], 1);
+                                    used_bits.setBit(swapper.table[dest], 1);
                                     swapper.swap(bit, dest, curr);
                                     bit = dest;
                                 }
                                 while (bit != dest)
                                 {
-                                    exchangeBits = bitfield_one << to_bitfield(bit);
-                                    exchangeBits |= bitfield_one << to_bitfield(bit + dir);
+                                    exchangeBits.set(0);
+                                    exchangeBits.setBit(bit, 1);
+                                    exchangeBits.setBit(bit + dir, 1);
                                     this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, curr.codeLabel));
                                     swapper.swap(bit, bit + dir, curr);
                                     instIndex++;
                                     bit += dir;
                                 }
-                                cond = getLowestBitIndex(curr.conditionQubits);
-                                targ_high = getHighestBitIndex(curr.targetQubits);
-                                targ_low = getLowestBitIndex(curr.targetQubits);
+                                cond = curr.conditionQubits.getLowestBitIndex();
+                                targ_high = curr.targetQubits.getHighestBitIndex();
+                                targ_low = curr.targetQubits.getLowestBitIndex();
                                 continue;
                             }
 
@@ -4376,11 +4453,37 @@ function QStaff(qReg, qPanel, pos)
             {
                 // Set the "used" bits
                 var allInstBits = new BitField(0, this.qReg.numQubits);
-                allInstBits = curr.targetQubits | curr.conditionQubits | curr.auxQubits;
+                allInstBits.set(curr.targetQubits);
+                allInstBits.orEquals(curr.conditionQubits);
+                allInstBits.orEquals(curr.auxQubits);
                 for (var bit = 0; bit < qReg.numQubits; ++bit)
                 {
-                    if (getBit(allInstBits, bit))
-                        used_bits |= bitfield_one << to_bitfield(swapper.table[bit]);
+                    if (allInstBits.getBit(bit))
+                        used_bits.setBit(swapper.table[bit], 1);
+                }
+            }
+        }
+        // TODO: re-assign inputs and outputs!
+        if (0)
+        {
+            // Unwind the swapper
+            for (var sb = 0; sb < swapper.numBits; ++sb)
+            {
+                if (swapper.table[sb] != sb)
+                {
+                    var sb2 = sb + 1;
+                    while (swapper.table[sb2] != sb)
+                        sb2++;
+                    while (sb2 > sb)
+                    {
+                        exchangeBits.set(0);
+                        exchangeBits.setBit(sb2, 1);
+                        exchangeBits.setBit(sb2 - 1, 1);
+                        this.insertInstruction(instIndex, new QInstruction('exchange', exchangeBits, 0, 0.0, 'swap restore'));
+                        swapper.swap(sb2, sb2 - 1);
+                        instIndex++;
+                        sb2--;
+                    }
                 }
             }
         }

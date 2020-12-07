@@ -1286,6 +1286,12 @@ function QChart(qReg, panel, pos)
         ctx.rect(this.pos.x, this.pos.y, this.width, this.height);
         ctx.clip();
 
+        if (this.barHeight == 0)
+        {
+            // If there's no title/collapse bar, nudge this up a little so it looks nicer.
+            this.margin.y = this.margin.x;
+        }
+        else
         {
             // Draw the qint name
             var str = 'state vector';
@@ -1717,8 +1723,8 @@ function QChart(qReg, panel, pos)
             // This should probably be done somewhere else.
             var num_qubits = this.qReg.numQubits;
             var num_values = 1 << num_qubits;
-            var has_mag = bitfield_zero;
-            var phase_flips = bitfield_zero;
+            var has_mag = NewBitField(0, num_values);
+            var phase_flips = NewBitField(0, num_values);
             var v0 = null;
             for (var i = 0; i < num_values; ++i)
             {
@@ -1726,24 +1732,24 @@ function QChart(qReg, panel, pos)
                 if (v0 == null)
                     v0 = vi;
                 if (vi.x * vi.x + vi.y * vi.y > 0)
-                    has_mag |= bitfield_one << to_bitfield(i);
+                    has_mag.setBit(i, 1);
                 if (v0.x * vi.x + v0.y * vi.y < 0)
-                    phase_flips |= bitfield_one << to_bitfield(i);
+                    phase_flips.setBit(i, 1);
             }
             // Now phaseFlips contains the phase info we need.
             // By setting it to zero, we can get the operations we need.
             var links = [];
-            var first_val = getLowestBitIndex(phase_flips);
+            var first_val = phase_flips.getLowestBitIndex();
             if (first_val >= 0)
             {
-                var last_val = getHighestBitIndex(phase_flips);
+                var last_val = phase_flips.getHighestBitIndex();
                 for (val = first_val; val < num_values; ++val)
                 {
-                    if (getBit(has_mag, val))
+                    if (has_mag.getBit(val))
                     {
                         var bit_state = 0;
                         if (val <= last_val)
-                            bit_state = getBit(phase_flips, val);
+                            bit_state = phase_flips.getBit(val);
                         for (var i = 0; i < links.length; ++i)
                         {
                             var link = links[i];
@@ -1903,6 +1909,7 @@ function QChart(qReg, panel, pos)
             ctx.restore();
         }
 
+//        var val_bf = new BitField(0, this.qReg.numQubits);
         for (var row = 0; row < numRows && 
                                 !this.stabilizerState && 
                                 !this.blochSphere &&
@@ -2171,6 +2178,7 @@ function QChart(qReg, panel, pos)
 
     this.mouseWheel = function (e)
     {
+        var handled = false;
         if (e.ctrlKey == true)
         {
             var dy = e.deltaY;
@@ -2185,7 +2193,7 @@ function QChart(qReg, panel, pos)
             if (this.wheelScale > 6.0)
                 this.wheelScale = 6.0;
             this.panel.draw();
-            return false;
+            handled = true;
         }
         else if (e.shiftKey == true)
         {
@@ -2207,15 +2215,16 @@ function QChart(qReg, panel, pos)
 //            console.log('mag: ' + this.magScale);
             this.panel.draw();
 //            console.log('mag: ' + this.magScale);
-            return false;
+            handled = true;
         }
-        else
+        else if (this.blochSphere)
         {
             var dy = e.deltaY;
             this.bloch_view_azimuth += dy * 0.05;
             this.panel.draw();
+            handled = true;
         }
-        return false;
+        return handled;
     }
 
     this.mouseDown = function (x, y)
@@ -2223,7 +2232,7 @@ function QChart(qReg, panel, pos)
         var radius = 15;
         var dx = x - this.collapse_x;
         var dy = y - this.collapse_y;
-        if (dx * dx + dy * dy < radius * radius)
+        if (dx * dx + dy * dy < radius * radius && this.barHeight > 0)
         {
             this.collapsed = !this.collapsed;
             this.panel.draw();

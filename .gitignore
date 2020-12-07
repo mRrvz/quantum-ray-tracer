@@ -302,3 +302,5 @@ TSWLatexianTemp*
 # xwatermark package
 *.xwm
 node_modules/
+src/output
+build
