@@ -1,13 +1,13 @@
 require('../qcengine/qcengine_node.js');
 const fs = require('fs');
-const { createCanvas, loadImage } = require('canvas')
+const { createCanvas, loadImage } = require('canvas');
+const { QPU } = require('../qcengine/qcengine_scriptpanel.js');
 
-qc = new QPU();
 
-var res_full_bits    = 7; //9  // Number of bits in x,y in the complete image. 8 means the image is 256x256
-var res_aa_bits      = 2; //3  // Number of bits in x,y per sub-pixel tile. 2 means tiles are 4x4
-var num_counter_bits = 4; //5  // The effective bit depth of the result.
-var accum_bits       = 10; //13 // Scratch qubits for the shader. More scratch bits means we can do more complicated math
+var res_full_bits    = 7;  // 9  
+var res_aa_bits      = 2;  // 3  
+var num_counter_bits = 4;  // 5  
+var accum_bits       = 10; // 13 
 
 var res_full        = 1 << res_full_bits; 
 var res_aa          = 1 << res_aa_bits;  
@@ -19,12 +19,21 @@ var qss_count_to_hits = [];
 var do_shortcut_qss = true; 
 var do_monte_carlo  = true; 
 
+var display_ground_truth = null;
+var display_monte_carlo = null;
+var display_qfull_res = null;
+var display_qss = null;
+var display_confidence = null;
+var display_cwtable = null;
+
 var color_planes = ['red', 'green', 'blue'];
 var color_plane = null;
 
+qc = new QPU();
+
 function do_sample()
 {
-    setup_display_boxes();
+    setup_canvases();
 
     for (var c = 0; c < color_planes.length; ++c)
     {
@@ -37,12 +46,8 @@ function do_sample()
     }
 
     save_images();
-
-    return display_qfull_res.list;
 }
 
-// The quantum pixel shader is the function which is called for each iteration.
-// When drawing the full-size image, this is called per sub-pixel. 
 function shader_quantum(qx, qy, tx, ty, qacc, condition, out_color)
 {
     var num_bins = 16;
@@ -637,7 +642,7 @@ function do_qss_image()
     }
     else
     {
-        // ???
+        // TODO
     }
 }
 
@@ -674,14 +679,7 @@ function invQFT(x)
     }
 }
 
-var display_ground_truth = null;
-var display_monte_carlo = null;
-var display_qfull_res = null;
-var display_qss = null;
-var display_confidence = null;
-var display_cwtable = null;
-
-function setup_display_boxes()
+function setup_canvases()
 {
     display_ground_truth = new canvasBox('display_ground_truth', res_tiles, res_tiles, res_aa);
     display_monte_carlo = new canvasBox('display_monte_carlo', res_tiles, res_tiles, res_aa);
