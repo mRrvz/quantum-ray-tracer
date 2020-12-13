@@ -102,7 +102,7 @@ class Images
     {
         this.display_ground_truth = new canvasBox('display_ground_truth', Constants.res_tiles, Constants.res_tiles, Constants.res_aa);
         this.display_monte_carlo = new canvasBox('display_monte_carlo', Constants.res_tiles, Constants.res_tiles, Constants.res_aa);
-        this.display_qfull_res = new canvasBox('display_qfull_res', Constants.res_tiles, Constants.res_tiles, 1);
+        this.display_qfull_res = new canvasBox('display_qfull_res', Constants.res_full, Constants.res_full, 1);
         this.display_qss = new canvasBox('display_qss', Constants.res_tiles, Constants.res_tiles, Constants.res_aa);
         this.display_confidence = new canvasBox('display_confidence', Constants.res_tiles, Constants.res_tiles, Constants.res_aa);
         this.display_cwtable = new canvasBox('display_cwtable', Constants.res_tiles, Constants.res_tiles, Constants.res_aa);

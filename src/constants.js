@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 class Constants
 {
     static res_full_bits    = 7;  // 9  
@@ -20,6 +22,17 @@ class Constants
     static fraction = 0;
 
     static progress_bar = null;
+    static image_json = null;
+
+    static read_image()
+    {
+        this.image_json = JSON.parse(fs.readFileSync('../config/example_01.json'));
+    }
+
+    static null_image()
+    {
+        this.image_json = null;
+    }
 
     static null_fraction()
     {   

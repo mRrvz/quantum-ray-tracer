@@ -27,6 +27,180 @@ function do_sample()
     images.save_images();
 }
 
+function belong_circle(tx, ty, obj)
+{
+    if (obj.is_fill)
+    {
+        if ((tx - obj.x) * (tx - obj.x) + (ty - obj.y) * (ty - obj.y) <= obj.radius * obj.radius) 
+        {
+            return true;
+        }
+    }
+    else 
+    {
+        if (Math.abs(((tx - obj.x) * (tx - obj.x) + (ty - obj.y) * (ty - obj.y)) - (obj.radius * obj.radius)) <= obj.radius * 0.8)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function belong_square(tx, ty, obj)
+{
+    if (obj.is_fill)
+    {
+        if (tx >= obj.x1 && ty >= obj.y1 && ty <= obj.y2 && tx <= obj.x2)
+        {
+            return true;
+        }
+    }
+    else
+    {
+        if ((tx >= obj.x1 && tx <= obj.x2 && (ty == obj.y1 || ty == obj.y2)) ||
+            (ty >= obj.y1 && ty <= obj.y2 && (tx == obj.x1 || tx == obj.x2))) 
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function belong_triangle(tx, ty, obj)
+{
+    const k = (obj.x1 - tx) * (obj.y2 - obj.y1) - (obj.x2 - obj.x1) * (obj.y1 - ty);
+    const m = (obj.x2 - tx) * (obj.y3 - obj.y2) - (obj.x3 - obj.x2) * (obj.y2 - ty);
+    const n = (obj.x3 - tx) * (obj.y1 - obj.y3) - (obj.x1 - obj.x3) * (obj.y3 - ty);
+
+    if ((k >= 0 && m >= 0 && n >= 0) || (k <= 0 && m <= 0 && n <= 0))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+function shader_quantum_from_file(tx, ty)
+{
+    var objects = Constants.image_json;
+
+    if (Constants.color_plane == 'blue')
+    {
+        if (objects.blue.circles)
+        {
+            for (const obj of objects.blue.circles)
+            {
+                if (belong_circle(tx, ty, obj)) 
+                {
+                    return 1;
+                }
+            }
+        }
+
+        if (objects.blue.squares)
+        {
+            for (const obj of objects.blue.squares)
+            {
+                if (belong_square(tx, ty, obj))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        if (objects.blue.triangles)
+        {
+            for (const obj of objects.blue.triangles)
+            {
+                if (belong_triangle(tx, ty, obj))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        return 0;
+    }
+    else if (Constants.color_plane == 'red')
+    {
+        if (objects.red.circles) 
+        {
+            for (const obj of objects.red.circles)
+            {
+                if (belong_circle(tx, ty, obj)) 
+                {
+                    return 1;
+                }
+            }
+        }
+
+        if (objects.red.squares)
+        {
+            for (const obj of objects.red.squares)
+            {
+                if (belong_square(tx, ty, obj))
+                {
+                    return 1;
+                }
+
+            }
+        }
+
+        if (objects.red.triangles)
+        {
+            for (const obj of objects.red.triangles)
+            {
+                if (belong_triangle(tx, ty, obj))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        return 0;
+    }
+    else // green
+    {
+        if (objects.green.circles)
+        {
+            for (const obj of objects.green.circles)
+            {
+                if (belong_circle(tx, ty, obj)) 
+                {
+                    return 1;
+                }
+            }
+        }
+
+        if (objects.green.squares)
+        {
+            for (const obj of objects.green.squares)
+            {
+                if (belong_square(tx, ty, obj))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        if (objects.green.triangles)
+        {
+            for (const obj of objects.green.triangles)
+            {
+                if (belong_triangle(tx, ty, obj))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
+
 function shader_quantum(qx, qy, tx, ty, qacc, condition, out_color)
 {
     var num_bins = 16;
@@ -428,7 +602,6 @@ function draw_reference_res_images()
         ideal_result.push([]);
 
         Constants.update_fraction();
-        console.log('full-res row ' + ty + ' of ' + Constants.res_tiles);
 
         for (var tx = 0; tx < Constants.res_tiles; ++tx)
         {
@@ -441,9 +614,22 @@ function draw_reference_res_images()
                     qx.write(x);
                     qy.write(y);
                     color.write(0);
-                    shader_quantum(qx, qy, tx, ty, qacc, null, color);
+                    
+                    var subpixel_value = null;
 
-                    var subpixel_value = color.read();
+                    if (Constants.image_json == null)
+                    {
+                        shader_quantum(qx, qy, tx, ty, qacc, null, color);
+                        subpixel_value = color.read();
+                    }
+                    else 
+                    {
+                        var full_x = (tx << Constants.res_aa_bits) + x;
+                        var full_y = (ty << Constants.res_aa_bits) + y;
+                        subpixel_value = shader_quantum_from_file(full_x, full_y);
+                    }
+
+                    //var subpixel_value = color.read();
                     var full_x = (tx << Constants.res_aa_bits) + x;
                     var full_y = (ty << Constants.res_aa_bits) + y;
 
@@ -593,7 +779,6 @@ function do_qss_image()
         qss_raw_result.push([]);
 
         Constants.update_fraction();
-        console.log('QSS row ' + sp.ty + ' of ' + Constants.res_tiles);
 
         for (sp.tx = 0; sp.tx < Constants.res_tiles; ++sp.tx)
         {

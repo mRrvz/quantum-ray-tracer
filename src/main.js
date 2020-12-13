@@ -69,6 +69,10 @@ class Application
         this.image_qss = new Gtk.Image();
         this.image_original = new Gtk.Image();
 
+        this.from_file_label = new Gtk.Label();
+        this.from_file_label.setLabel("Загрузить из файла: ")
+        this.check_button = new Gtk.CheckButton();
+
         this.progress_bar = new Gtk.ProgressBar();
         Constants.progress_bar = this.progress_bar;
 
@@ -91,7 +95,10 @@ class Application
 
         this.container.put(this.qcc_label, 0, 0);
         this.container.put(this.ideal_label, 0, 0);
-        this.container.put(this.about_sumulation, 5, 548);
+        this.container.put(this.about_sumulation, 5, 568);
+        
+        this.container.put(this.from_file_label, 5, 548)
+        this.container.put(this.check_button, 155, 548);
 
         this.progress_bar.setFraction(0);
         this._update_sim_info();
@@ -124,20 +131,27 @@ class Application
         Constants.update_aa_bits(this.entry_subpixel_size.getValue());
         Constants.update_counter_bits(this.entry_counter.getValue());
         Constants.update_full_bits(this.entry_image_size.getValue());
+        
         Constants.null_fraction();
+        Constants.null_image();
+
+        if (this.check_button.active)
+        {
+            Constants.read_image(); // from config?
+        }
 
         this.container.move(this.image_qss, 20 + Constants.res_full, 50);
         this.progress_bar.setFraction(0);
 
         supersampling.do_sample();
 
-        this.ideal_label.setLabel("1. Идеальное изображение");
+        this.ideal_label.setLabel("1. Исходное изображение");
         this.qcc_label.setLabel("2. Квантовая избыточная выборка");
         this.container.move(this.qcc_label, 10, Constants.res_full + 75);
         this.container.move(this.ideal_label, 10, Constants.res_full + 60);
 
         this.image_qss.setFromFile("output/display_qss.png");
-        this.image_original.setFromFile("output/display_ground_truth.png")
+        this.image_original.setFromFile("output/display_qfull_res.png")
     }
 
     _onActivate() 
