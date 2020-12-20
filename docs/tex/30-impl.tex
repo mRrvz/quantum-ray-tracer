@@ -8,7 +8,7 @@
 
 Для создания пользовательского интерфейса программного обеспечения будет использоваться модуль node-gtk \cite{node-gtk} вместе с модулем canvas \cite{node-canvas}. Два этих инструмента в связке друг с другом позволят одновременно выводить синтезируемое изображение на экран, и сохранять его (при необходимости) в файл, например для дальнейшего анализа с помощью каких-либо других утилит.
 
-Для тестирования программного обеспечения будет использоваться фреймворк Jest \cite{jest}. Данный инструмент предоставляет много различного функционала, позволяющего тестировать приложения, в том числе написанных на Node.js. Разрабатываемое программное обеспечение будет тестироваться по средствам модульного тестирования \cite{utests}. Функциональное тестирование \cite{ftests} ПО проводиться не будет из-за своей специфики.
+Для тестирования программного обеспечения будет использоваться фреймворк Jest \cite{jest}. Данный инструмент предоставляет много различного функционала, позволяющего тестировать приложения, в том числе написанных на Node.js. Разрабатываемое программное обеспечение будет тестироваться по средствам модульного тестирования \cite{utests}. Функциональное тестирование \cite{ftests} ПО проводиться не будет из-за своей специфики -- разработанное ПО является GUI-приложением, что усложняет процесс тестирования.
 
 Для обеспечения качества кода был использован инструмент ESLint \cite{eslint}, позволяющий во время процесса написания исходных кодов программного обеспечения контролировать наличие синтаксических и логических ошибок.
 
@@ -16,19 +16,183 @@
 
 \section{Детали реализации}
 
-В листингах 3.1 -- 3.3 приведен исходный код реализации алгоритма квантовой супер выборки. Сам алгоритм разделен на подпрограммы: формирование квантовой поисковой таблицы, синтез изображения и заполнения карты достоверности. 
-
+В листингах \ref{qtable} -- \ref{qmap} приведен исходный код реализации алгоритма квантовой супер выборки. Сам алгоритм разделен на подпрограммы: формирование квантовой поисковой таблицы, синтез изображения и заполнения карты достоверности. 
 
 \begin{lstlisting}[label=qtable,caption=Функция формирования квантовой поисковой таблицы, language=javascript]
-jabascript
+function create_qss_lookup_table()
+{
+	qc.reset((Constants.res_aa_bits + Constants.res_aa_bits) + Constants.num_counter_bits);
+	var qxy = qc.new_qint(Constants.res_aa_bits + Constants.res_aa_bits, 'qxy');
+	var qcount = qc.new_qint(Constants.num_counter_bits, 'count');
+	
+	var num_subpixels = 1 << (Constants.res_aa_bits + Constants.res_aa_bits)
+	qss_full_lookup_table = null;
+	
+	for (var hits = 0; hits <= num_subpixels; ++hits)
+	{
+		create_table_column(hits, qxy, qcount);
+	}
+	
+	var cw = qss_full_lookup_table;
+	qss_count_to_hits = [];
+	
+	for (var count = 0; count < cw.length; ++count)
+	{
+		var best_hits = 0;
+		var best_prob = 0;
+	
+		for (var hits = 0; hits < cw[0].length; ++hits)
+		{
+			if (best_prob < cw[count][hits])
+			{
+				best_prob = cw[count][hits];
+				best_hits = hits;
+			}
+		}
+	
+		qss_count_to_hits.push(best_hits);
+	}
+	
+	if (qss_full_lookup_table && images.display_cwtable)
+	{
+		images.display_cwtable.setup(cw[0].length, cw.length, 16);
+		
+		for (var y = 0; y < cw.length; ++y)
+		{
+			for (var x = 0; x < cw[0].length; ++x)
+			{
+				images.display_cwtable.pixel(x, y, cw[y][x]);
+			}
+		}
+	}
+}
+
+
+function create_table_column(color, qxy, qcount)
+{
+	var num_subpixels = 1 << (Constants.res_aa_bits + Constants.res_aa_bits)
+	var true_count = color;
+	
+	qc.write(0);
+	qcount.hadamard();
+	qxy.hadamard();
+	
+	for (var i = 0; i < Constants.num_counter_bits; ++i)
+	{
+		var reps = 1 << i;
+		var condition = qcount.bits(reps);
+		var mask_with_condition = qxy.bits().or(condition);
+	
+		for (var j = 0; j < reps; ++j)
+		{
+			flip_n_terms(qxy, true_count, condition);
+			grover_iteration(qxy.bits(), mask_with_condition);
+		}
+	}
+	
+	invQFT(qcount);
+	var table = [];
+	
+	for (var i = 0; i < (1 << Constants.num_counter_bits); ++i)
+	{
+		table.push(qcount.peekProbability(i));
+	}
+	
+	if (qss_full_lookup_table == null)
+	{
+		qss_full_lookup_table = [];
+	
+		for (var i = 0; i < (1 << Constants.num_counter_bits); ++i)
+		{
+			qss_full_lookup_table.push([]);
+			
+			for (var j = 0; j < num_subpixels; ++j)
+			{
+				qss_full_lookup_table[i].push(0);
+			}
+		}
+	}
+	
+	for (var col = 0; col < 1 << Constants.num_counter_bits; ++col)
+	{
+		qss_full_lookup_table[col][true_count] = table[col];
+	}
+}
 \end{lstlisting}
 
-\begin{lstlisting}[label=synt,caption=Функция синтеза изображения на основе значений поисковой таблицы, language=javascript]
-javascript2
+\begin{lstlisting}[label=qss,caption=Функция синтеза изображения на основе значений поисковой таблицы, language=javascript]
+function do_qss_image()
+{
+	qc.reset(2 * Constants.res_aa_bits + Constants.num_counter_bits + Constants.accum_bits);
+	var sp = {};
+	
+	sp.qx = qc.new_qint(Constants.res_aa_bits, 'qx');
+	sp.qy = qc.new_qint(Constants.res_aa_bits, 'qy');
+	sp.counter = qc.new_qint(Constants.num_counter_bits, 'counter');
+	sp.qacc = qc.new_qint(Constants.accum_bits, 'scratch');
+	sp.qacc.write(0);
+	
+	var total_pixel_error = 0;
+	var num_zero_error_pixels = 0;
+	qss_raw_result = [];
+	
+	for (sp.ty = 0; sp.ty < Constants.res_tiles; ++sp.ty)
+	{
+		qss_raw_result.push([]);
+		
+		Constants.update_fraction();
+		
+		for (sp.tx = 0; sp.tx < Constants.res_tiles; ++sp.tx)
+		{
+			qss_tile(sp);
+			qss_raw_result[sp.ty].push(sp.readVal);
+			images.display_qss.pixel(sp.tx, sp.ty, sp.color);
+			
+			if (ideal_result)
+			{
+				var pixel_error = Math.abs(sp.hits - ideal_result[sp.ty][sp.tx]);
+			
+				if (pixel_error)
+				{
+					total_pixel_error += pixel_error;
+				}
+				else
+				{
+					num_zero_error_pixels++;
+				}
+			}
+		}
+	}
+}
 \end{lstlisting}
 
-\begin{lstlisting}[label=qfind,caption=Функция заполнения карты достоверности, language=javascript]
-javascript3
+\begin{lstlisting}[label=qmap,caption=Функция заполнения карты достоверности, language=javascript]
+function draw_confidence_map()
+{
+	var cw = qss_full_lookup_table;
+		
+	for (var ty = 0; ty < Constants.res_tiles; ++ty)
+	{
+		for (var tx = 0; tx < Constants.res_tiles; ++tx)
+		{
+			var qss_out = qss_raw_result[ty][tx];
+			var row_total = 0;
+			var row_max = 0;
+		
+			for (var x = 0; x < cw[0].length; ++x)
+			{
+				row_total += cw[qss_out][x];
+					
+				if (cw[qss_out][x] > row_max)
+				{
+					row_max = cw[qss_out][x];
+				}
+			}
+	
+			images.display_confidence.pixel(tx, ty, row_max / row_total);
+		}
+	}
+}
 \end{lstlisting}
 
 \section*{Вывод}
